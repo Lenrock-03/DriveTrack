@@ -41,6 +41,8 @@ class LocationTracker(context: Context) {
 
     var isRecording by mutableStateOf(false)
         private set
+    var isPaused by mutableStateOf(false)
+        private set
     var elapsedSeconds by mutableStateOf(0L)
         private set
     var distanceMeters by mutableStateOf(0.0)
@@ -76,6 +78,7 @@ class LocationTracker(context: Context) {
     fun start() {
         if (isRecording) return
         isRecording = true
+        isPaused = false
         startTime = System.currentTimeMillis()
         distanceMeters = 0.0
         currentSpeedKmh = 0.0
@@ -97,8 +100,38 @@ class LocationTracker(context: Context) {
         }
     }
 
+    /** Pausiert Standort-Updates und die Zeitzählung, ohne die Aufzeichnung zu beenden. */
+    fun pause() {
+        if (!isRecording || isPaused) return
+        isPaused = true
+        currentSpeedKmh = 0.0
+        fusedClient.removeLocationUpdates(locationCallback)
+        timerJob?.cancel()
+    }
+
+    @SuppressLint("MissingPermission") // Permission wird vorher im UI geprüft
+    fun resume() {
+        if (!isRecording || !isPaused) return
+        isPaused = false
+        // Startzeit so verschieben, dass die bisher verstrichene Zeit erhalten bleibt
+        startTime = System.currentTimeMillis() - (elapsedSeconds * 1000)
+
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
+            .setMinUpdateIntervalMillis(1000L)
+            .build()
+        fusedClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+
+        timerJob = trackerScope.launch {
+            while (isRecording && !isPaused) {
+                elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000
+                delay(1000)
+            }
+        }
+    }
+
     fun stop(): RecordingResult {
         isRecording = false
+        isPaused = false
         fusedClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
 

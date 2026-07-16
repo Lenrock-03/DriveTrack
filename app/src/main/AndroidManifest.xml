@@ -15,6 +15,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -31,10 +32,26 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.DriveTrack">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Erscheint im Teilen-Menü anderer Apps, wenn eine .gpx-Datei geteilt wird -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/gpx+xml" />
+            </intent-filter>
+
+            <!-- Ermöglicht "Öffnen mit DriveTrack" direkt aus dem Dateimanager -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" android:mimeType="application/gpx+xml" />
             </intent-filter>
         </activity>
 
@@ -45,12 +62,15 @@
             android:foregroundServiceType="location">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
-                <category android:name="androidx.car.app.category.IOT" />
+                <category android:name="androidx.car.app.category.POI" />
             </intent-filter>
         </service>
 
-        <!-- Foreground Service für GPS-Tracking während der Fahrt (folgt) -->
-        <!-- <service android:name=".tracking.TripTrackingService" android:foregroundServiceType="location" /> -->
+        <!-- Foreground Service: verhindert GPS-Drosselung während der Aufzeichnung -->
+        <service
+            android:name=".tracking.TripTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
 
         <!-- FileProvider für den GPX-Export (sicheres Teilen von Dateien mit anderen Apps) -->
         <provider

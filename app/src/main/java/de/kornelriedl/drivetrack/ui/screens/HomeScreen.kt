@@ -16,7 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.ui.components.CarSelector
 import de.kornelriedl.drivetrack.ui.components.TripListItem
 
 @Composable
@@ -30,6 +32,10 @@ fun HomeScreen(
     onTripClick: (Trip) -> Unit,
     onRenameTrip: (Trip, String) -> Unit,
     onDeleteTrip: (Trip) -> Unit,
+    cars: List<Car>,
+    selectedCarId: Long?,
+    onSelectCar: (Long?) -> Unit,
+    onAddCar: (String) -> Unit,
     showDashboard: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -46,10 +52,22 @@ fun HomeScreen(
     ) {
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = "Hallo $userName",
-            style = MaterialTheme.typography.headlineMedium
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Hallo $userName",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            CarSelector(
+                cars = cars,
+                selectedCarId = selectedCarId,
+                onSelectCar = onSelectCar,
+                onAddCar = onAddCar
+            )
+        }
 
         if (showDashboard) {
             Spacer(modifier = Modifier.height(20.dp))

@@ -78,12 +78,24 @@ fun LiveRouteMap(
                         setUseDataConnection(true)
 
                         controller.setZoom(17.0)
-                        controller.setCenter(GeoPoint(47.8, 11.7)) // grobe Startposition
+                        // Direkt bei der letzten bekannten Position starten statt bei einem Platzhalter-Ort
+                        val lastKnown = if (hasPermission) {
+                            val locationManager = ctx.getSystemService(android.location.LocationManager::class.java)
+                            listOfNotNull(
+                                locationManager?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER),
+                                locationManager?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                            ).firstOrNull()
+                        } else null
+                        controller.setCenter(
+                            if (lastKnown != null) GeoPoint(lastKnown.latitude, lastKnown.longitude)
+                            else GeoPoint(47.8, 11.7)
+                        )
 
                         val polyline = Polyline(this).apply {
                             outlinePaint.color = Color.parseColor("#FF7A1A")
                             outlinePaint.strokeWidth = 10f
                             outlinePaint.isAntiAlias = true
+                            setOnClickListener { _, _, _ -> true } // keine weiße Bubble beim Antippen
                         }
                         overlays.add(polyline)
                         polylineRef.value = polyline
@@ -102,7 +114,7 @@ fun LiveRouteMap(
                             locationOverlay.enableFollowLocation()
                             locationOverlay.runOnFirstFix {
                                 post {
-                                    locationOverlay.myLocation?.let { controller.animateTo(it) }
+                                    locationOverlay.myLocation?.let { controller.setCenter(it) }
                                 }
                             }
                             overlays.add(locationOverlay)

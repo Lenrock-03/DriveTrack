@@ -18,6 +18,7 @@ import androidx.lifecycle.LifecycleOwner
 import de.kornelriedl.drivetrack.data.local.TripDao
 import de.kornelriedl.drivetrack.data.toTrip
 import de.kornelriedl.drivetrack.tracking.LocationTracker
+import de.kornelriedl.drivetrack.tracking.TripTrackingService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -88,11 +89,13 @@ class RecordingCarScreen(
                     .setOnClickListener {
                         if (tracker.isRecording) {
                             val result = tracker.stop()
+                            TripTrackingService.stop(carContext)
                             CoroutineScope(Dispatchers.IO).launch {
                                 tripDao.insertTrip(result.toTrip())
                             }
                         } else {
                             tracker.start()
+                            TripTrackingService.start(carContext)
                         }
                         invalidate()
                     }

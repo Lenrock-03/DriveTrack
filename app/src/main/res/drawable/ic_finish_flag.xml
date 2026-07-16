@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <!-- Weißer Rand -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M16,16m-11,0a11,11 0 1,0 22,0a11,11 0 1,0 -22,0" />
+
+    <!-- Kariertes Muster, auf den Innenkreis geclippt -->
+    <group>
+        <clip-path
+            android:pathData="M16,16m-8,0a8,8 0 1,0 16,0a8,8 0 1,0 -16,0" />
+        <path
+            android:fillColor="#212121"
+            android:pathData="M8,8 L24,8 L24,24 L8,24 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M8,8 L12,8 L12,12 L8,12 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M16,8 L20,8 L20,12 L16,12 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M12,12 L16,12 L16,16 L12,16 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M20,12 L24,12 L24,16 L20,16 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M8,16 L12,16 L12,20 L8,20 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M16,16 L20,16 L20,20 L16,20 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M12,20 L16,20 L16,24 L12,24 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M20,20 L24,20 L24,24 L20,24 Z" />
+    </group>
+</vector>

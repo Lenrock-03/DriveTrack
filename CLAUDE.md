@@ -70,3 +70,28 @@ gebaut von `export/BackupExporter.kt` (`buildBackupJson()` / `importBackupFromJs
 ## Deployment
 
 Keine automatisierte Pipeline – Debug-Build über Android Studio (`Gradle sync` + `Run`). Kein Play-Store-Release bisher.
+
+## Versionierung
+
+Seit 2026-08-05 einheitlich über alle drei Projekte (App, Backend, Web):
+
+- **Semantic Versioning** (`MAJOR.MINOR.PATCH`) – `versionName` in `app/build.gradle.kts` ist die
+  einzige Quelle der Wahrheit, `versionCode` bei jedem Release ebenfalls um 1 erhöhen (auch ohne
+  Play Store relevant für Update-Reihenfolge). Wird zur Laufzeit per `PackageManager` gelesen und
+  unten in den Einstellungen angezeigt.
+- **MAJOR**: Breaking Change am Backup-JSON-Format/Verschlüsselungsschema (betrifft dann zwangsläufig
+  auch Backend + Web-App) oder DB-Migration, die alte Daten nicht mehr rettet
+- **MINOR**: neues Feature, abwärtskompatibel
+- **PATCH**: Bugfix, kein Verhaltensunterschied
+- Bei jedem Bump: `CHANGELOG.md` ergänzen (Format: [Keep a Changelog](https://keepachangelog.com/)),
+  Git-Tag `vX.Y.Z` setzen, `git push --tags`
+- Releases aktuell **manuell** per `gh release create vX.Y.Z <apk-datei> --notes-file CHANGELOG.md` –
+  kein CI/CD dafür eingerichtet, APK wird lokal per `./gradlew assembleDebug` gebaut (kein
+  Release-Signing-Setup bisher, daher Debug-Build auch für Releases)
+- Repo: `github.com/Lenrock-03/DriveTrack`
+
+**Wichtig beim Verteilen an andere Geräte** (z. B. Familie): Die APK immer als **Update** über die
+bestehende Installation einspielen (`adb install -r` oder Datei antippen und "Aktualisieren" wählen),
+niemals vorher deinstallieren – sonst geht die lokale Room-Datenbank (alle Fahrten) verloren. Nur bei
+Signatur-Mismatch (App wurde ursprünglich mit einem anderen Debug-Keystore installiert) geht das nicht
+automatisch; dann vorher `adb run-as de.kornelriedl.drivetrack cat databases/drivetrack.db` sichern.

@@ -94,6 +94,12 @@
             android:name=".tracking.DiscardRecordingReceiver"
             android:exported="false" />
 
+        <!-- Nur für den Start-Button in der Bluetooth-Vorschlags-Notification, per PendingIntent
+             ausgelöst -> muss nicht exportiert sein. -->
+        <receiver
+            android:name=".tracking.StartRecordingFromNotificationReceiver"
+            android:exported="false" />
+
         <!-- FileProvider für den GPX-Export (sicheres Teilen von Dateien mit anderen Apps) -->
         <provider
             android:name="androidx.core.content.FileProvider"

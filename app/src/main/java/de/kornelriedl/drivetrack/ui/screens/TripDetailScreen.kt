@@ -415,7 +415,13 @@ private fun SpeedGraph(
     }
 
     var selectedIndex by remember(trip.id) { mutableStateOf(points.size - 1) }
-    val maxSpeed = remember(points) { points.maxOf { it.speedKmh }.coerceAtLeast(1f) }
+    // Skala bewusst NICHT aus dem Maximum der selbst berechneten Segment-Geschwindigkeiten nehmen:
+    // einzelne GPS-Ausreißer (kurzer ungenauer Fix) erzeugen sonst rechnerisch absurd hohe Werte
+    // (Distanz/Zeit zwischen zwei Punkten), die die ganze Skala stauchen und den Rest der Fahrt
+    // am unteren Rand "kleben" lassen. trip.maxSpeedKmh kommt von loc.speed (GPS-Chip, Doppler-
+    // basiert) und ist schon in den Stat-Kacheln zu sehen - deutlich robuster als unsere eigene
+    // Positions-Differenz-Rechnung. Einzelne Ausreißer werden beim Zeichnen einfach oben gekappt.
+    val maxSpeed = remember(trip.id) { trip.maxSpeedKmh.toFloat().coerceAtLeast(1f) }
     val totalDuration = remember(points) { points.last().offsetSeconds.coerceAtLeast(1f) }
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.GERMANY) }
 
@@ -470,7 +476,7 @@ private fun SpeedGraph(
             val path = Path()
             points.forEachIndexed { i, p ->
                 val x = (p.offsetSeconds / totalDuration) * w
-                val y = h - (p.speedKmh / maxSpeed) * h
+                val y = h - (p.speedKmh / maxSpeed).coerceAtMost(1f) * h
                 if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
             drawPath(
@@ -481,7 +487,7 @@ private fun SpeedGraph(
 
             val sel = points[selectedIndex]
             val selX = (sel.offsetSeconds / totalDuration) * w
-            val selY = h - (sel.speedKmh / maxSpeed) * h
+            val selY = h - (sel.speedKmh / maxSpeed).coerceAtMost(1f) * h
 
             drawLine(
                 color = onSurfaceVariant.copy(alpha = 0.4f),

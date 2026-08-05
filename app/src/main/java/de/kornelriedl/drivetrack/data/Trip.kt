@@ -29,6 +29,17 @@ data class Trip(
 
     val distanceKm: Double
         get() = distanceMeters / 1000.0
+
+    /** "42 min" bis 60 Minuten, danach "Xh Ym" (z. B. "3h 20m") für bessere Lesbarkeit langer Fahrten. */
+    val durationFormatted: String
+        get() {
+            val minutes = durationMinutes
+            return if (minutes > 60) {
+                "${minutes / 60}h ${minutes % 60}m"
+            } else {
+                "$minutes min"
+            }
+        }
 }
 
 /**

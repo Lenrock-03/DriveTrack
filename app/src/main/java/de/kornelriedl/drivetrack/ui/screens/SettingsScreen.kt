@@ -428,6 +428,16 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Version ${appVersionName(context)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
     }
 
     if (addCarDialogOpen) {
@@ -607,7 +617,11 @@ private fun BluetoothDevicePickerDialog(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    else -> Column {
+                    else -> Column(
+                        modifier = Modifier
+                            .heightIn(max = 280.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -679,3 +693,15 @@ private fun bluetoothDeviceDisplayName(device: BluetoothDevice): String {
         device.address
     }
 }
+
+/**
+ * Liest die versionName aus dem PackageManager statt aus BuildConfig (das erfordert kein
+ * zusätzliches "buildFeatures.buildConfig = true" in build.gradle.kts und spiegelt garantiert
+ * die tatsächlich installierte APK wider).
+ */
+private fun appVersionName(context: Context): String =
+    try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+    } catch (e: PackageManager.NameNotFoundException) {
+        "?"
+    }

@@ -63,7 +63,7 @@ fun TripListItem(trip: Trip, onClick: () -> Unit, onLongClick: () -> Unit = {}) 
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "${trip.durationMinutes} min",
+                        text = trip.durationFormatted,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

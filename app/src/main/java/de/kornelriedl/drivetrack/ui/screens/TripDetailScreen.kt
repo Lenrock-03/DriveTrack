@@ -358,7 +358,7 @@ private fun StatsGrid(trip: Trip, modifier: Modifier = Modifier) {
             )
             DetailStatCard(
                 icon = Icons.Filled.Timer,
-                value = "${trip.durationMinutes} min",
+                value = trip.durationFormatted,
                 label = "Dauer",
                 modifier = Modifier.weight(1f)
             )

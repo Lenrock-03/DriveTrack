@@ -17,6 +17,11 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Automatischer Aufzeichnungsstart bei Verbindung mit dem Auto-Radio -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -71,6 +76,23 @@
             android:name=".tracking.TripTrackingService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- Startet Aufzeichnung automatisch bei Verbindung zu einem Auto zugeordneten Bluetooth-Gerät.
+             exported=true ist hier nötig, ACL_CONNECTED ist aber ein von Android geschützter
+             "protected broadcast" und kann trotzdem nur vom System gesendet werden. -->
+        <receiver
+            android:name=".tracking.BluetoothConnectionReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Nur für den "Verwerfen"-Button in der Aufzeichnungs-Notification, per PendingIntent
+             ausgelöst -> muss nicht exportiert sein. -->
+        <receiver
+            android:name=".tracking.DiscardRecordingReceiver"
+            android:exported="false" />
 
         <!-- FileProvider für den GPX-Export (sicheres Teilen von Dateien mit anderen Apps) -->
         <provider

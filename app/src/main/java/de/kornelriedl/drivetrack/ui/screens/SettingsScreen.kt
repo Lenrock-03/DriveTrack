@@ -1,6 +1,14 @@
 package de.kornelriedl.drivetrack.ui.screens
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -9,6 +17,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
@@ -24,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.UserProfile
@@ -38,6 +49,7 @@ fun SettingsScreen(
     onDeleteCar: (Car) -> Unit,
     defaultCarId: Long?,
     onSetDefaultCar: (Long?) -> Unit,
+    onSetCarBluetoothDevice: (Car, String?) -> Unit,
     users: List<UserProfile>,
     activeUserId: Long?,
     onSelectUser: (Long?) -> Unit,
@@ -52,6 +64,7 @@ fun SettingsScreen(
     var addCarDialogOpen by remember { mutableStateOf(false) }
     var newCarName by remember { mutableStateOf("") }
     var deleteCarTarget by remember { mutableStateOf<Car?>(null) }
+    var bluetoothCarTarget by remember { mutableStateOf<Car?>(null) }
     var addUserDialogOpen by remember { mutableStateOf(false) }
     var newUserName by remember { mutableStateOf("") }
     var deleteUserTarget by remember { mutableStateOf<UserProfile?>(null) }
@@ -214,6 +227,7 @@ fun SettingsScreen(
                     Column(modifier = Modifier.padding(top = 8.dp)) {
                         cars.forEach { car ->
                             val isDefault = car.id == defaultCarId
+                            val hasBluetoothDevice = car.bluetoothDeviceAddress != null
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -237,11 +251,27 @@ fun SettingsScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = car.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.weight(1f)
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = car.name,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    if (hasBluetoothDevice) {
+                                        Text(
+                                            text = "Auto-Start via Bluetooth aktiv",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                                IconButton(onClick = { bluetoothCarTarget = car }) {
+                                    Icon(
+                                        imageVector = if (hasBluetoothDevice) Icons.Filled.BluetoothConnected else Icons.Filled.Bluetooth,
+                                        contentDescription = "Bluetooth-Auto-Start einrichten",
+                                        tint = if (hasBluetoothDevice) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 IconButton(onClick = { deleteCarTarget = car }) {
                                     Icon(
                                         imageVector = Icons.Filled.Delete,
@@ -458,6 +488,17 @@ fun SettingsScreen(
         )
     }
 
+    bluetoothCarTarget?.let { car ->
+        BluetoothDevicePickerDialog(
+            car = car,
+            onConfirm = { address ->
+                onSetCarBluetoothDevice(car, address)
+                bluetoothCarTarget = null
+            },
+            onDismiss = { bluetoothCarTarget = null }
+        )
+    }
+
     if (addUserDialogOpen) {
         AlertDialog(
             onDismissRequest = { addUserDialogOpen = false },
@@ -509,5 +550,132 @@ fun SettingsScreen(
                 }
             }
         )
+    }
+}
+
+/**
+ * Dialog zum Zuordnen eines gekoppelten Bluetooth-Geräts (z. B. Auto-Radio) zu einem Fahrzeug.
+ * Verbindet sich das Handy künftig mit diesem Gerät, startet DriveTrack die Aufzeichnung für
+ * genau dieses Auto automatisch (siehe BluetoothConnectionReceiver).
+ */
+@Composable
+private fun BluetoothDevicePickerDialog(
+    car: Car,
+    onConfirm: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var hasBluetoothPermission by remember { mutableStateOf(hasBluetoothConnectPermission(context)) }
+    var selectedAddress by remember(car) { mutableStateOf(car.bluetoothDeviceAddress) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasBluetoothPermission = granted }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasBluetoothPermission) {
+            permissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+    }
+
+    val bondedDevices = remember(hasBluetoothPermission) {
+        if (hasBluetoothPermission) getBondedDevices(context) else emptyList()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Bluetooth-Auto-Start für „${car.name}“") },
+        text = {
+            Column {
+                Text(
+                    text = "Verbindet sich das Handy mit dem gewählten Gerät (z. B. dem Auto-Radio), " +
+                        "startet die Aufzeichnung für dieses Auto automatisch.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                when {
+                    !hasBluetoothPermission -> Text(
+                        text = "Bluetooth-Berechtigung wird benötigt, um gekoppelte Geräte anzuzeigen.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    bondedDevices.isEmpty() -> Text(
+                        text = "Keine gekoppelten Bluetooth-Geräte gefunden. Erst das Auto-Radio in den " +
+                            "Bluetooth-Systemeinstellungen koppeln.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    else -> Column {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedAddress = null }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = selectedAddress == null, onClick = { selectedAddress = null })
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Kein Gerät (Auto-Start aus)")
+                        }
+                        bondedDevices.forEach { device ->
+                            val name = bluetoothDeviceDisplayName(device)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedAddress = device.address }
+                                    .padding(vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selectedAddress == device.address,
+                                    onClick = { selectedAddress = device.address }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(name)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selectedAddress) }) {
+                Text("Übernehmen")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Abbrechen")
+            }
+        }
+    )
+}
+
+private fun hasBluetoothConnectPermission(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+    return ContextCompat.checkSelfPermission(
+        context, Manifest.permission.BLUETOOTH_CONNECT
+    ) == PackageManager.PERMISSION_GRANTED
+}
+
+@SuppressLint("MissingPermission") // Permission wird vorher per hasBluetoothConnectPermission geprüft
+private fun getBondedDevices(context: Context): List<BluetoothDevice> {
+    val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return emptyList()
+    val adapter = manager.adapter ?: return emptyList()
+    return try {
+        adapter.bondedDevices.toList()
+    } catch (e: SecurityException) {
+        emptyList()
+    }
+}
+
+@SuppressLint("MissingPermission") // Permission wird vorher per hasBluetoothConnectPermission geprüft
+private fun bluetoothDeviceDisplayName(device: BluetoothDevice): String {
+    return try {
+        device.name ?: device.address
+    } catch (e: SecurityException) {
+        device.address
     }
 }

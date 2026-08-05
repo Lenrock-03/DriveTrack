@@ -73,13 +73,35 @@ class TripTrackingService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(if (tracker.isPaused) "Aufzeichnung pausiert" else "Aufzeichnung läuft")
+        val title = when {
+            tracker.isPaused -> "Aufzeichnung pausiert"
+            tracker.startedViaBluetooth -> "Aufzeichnung automatisch gestartet"
+            else -> "Aufzeichnung läuft"
+        }
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
             .setContentText(statusText())
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setOngoing(true)
             .setContentIntent(openAppIntent)
-            .build()
+
+        // Nur bei automatischem Start per Bluetooth: Möglichkeit, einen Fehlstart (z. B. Kopfhörer
+        // statt Auto-Radio verbunden) direkt zu verwerfen, ohne die Fahrt zu speichern.
+        if (tracker.startedViaBluetooth) {
+            val discardIntent = PendingIntent.getBroadcast(
+                this, 0,
+                Intent(this, DiscardRecordingReceiver::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Verwerfen",
+                discardIntent
+            )
+        }
+
+        return builder.build()
     }
 
     private fun updateNotification() {

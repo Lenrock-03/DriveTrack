@@ -43,6 +43,8 @@ class LocationTracker(context: Context) {
         private set
     var isPaused by mutableStateOf(false)
         private set
+    /** True, wenn diese Aufzeichnung durch BluetoothConnectionReceiver ausgelöst wurde (nicht manuell). */
+    var startedViaBluetooth by mutableStateOf(false)
     var elapsedSeconds by mutableStateOf(0L)
         private set
     var distanceMeters by mutableStateOf(0.0)
@@ -79,6 +81,7 @@ class LocationTracker(context: Context) {
         if (isRecording) return
         isRecording = true
         isPaused = false
+        startedViaBluetooth = false // wird vom Aufrufer (BluetoothConnectionReceiver) danach ggf. auf true gesetzt
         startTime = System.currentTimeMillis()
         distanceMeters = 0.0
         currentSpeedKmh = 0.0
@@ -132,6 +135,7 @@ class LocationTracker(context: Context) {
     fun stop(): RecordingResult {
         isRecording = false
         isPaused = false
+        startedViaBluetooth = false
         fusedClient.removeLocationUpdates(locationCallback)
         timerJob?.cancel()
 

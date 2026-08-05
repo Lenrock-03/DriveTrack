@@ -149,6 +149,9 @@ fun DriveTrackApp(
             CarPreferences.setDefaultCarId(context, null)
         }
     }
+    val onSetCarBluetoothDevice: (Car, String?) -> Unit = { car, address ->
+        scope.launch { carDao.updateCar(car.copy(bluetoothDeviceAddress = address)) }
+    }
 
     // Nach Auto gefilterte Fahrten für Home & Fahrten (null = "Alle Autos")
     val filteredTrips = if (selectedCarId != null) trips.filter { it.carId == selectedCarId } else trips
@@ -342,6 +345,7 @@ fun DriveTrackApp(
                 onDeleteCar = onDeleteCar,
                 defaultCarId = defaultCarId,
                 onSetDefaultCar = onSetDefaultCar,
+                onSetCarBluetoothDevice = onSetCarBluetoothDevice,
                 users = users,
                 activeUserId = activeUserId,
                 onSelectUser = onSelectUser,

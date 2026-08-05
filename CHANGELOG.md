@@ -5,6 +5,20 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.3.0] - 2026-08-05
+
+### Hinzugefügt
+- **Automatischer Server-Sync**: Fahrten werden nach dem Beenden automatisch gesichert (kein
+  manueller "Backup sichern"-Tipp mehr nötig), während der Aufzeichnung läuft zusätzlich alle
+  3 Minuten ein Zwischen-Sync als Sicherheitsnetz (falls Handy/App mittendrin ausfällt)
+- Neuer Backend-Endpunkt dafür: `PUT/GET/DELETE /api/live-trip` (Backend v1.1.0)
+
+### Geändert
+- **Sicherheitsmodell**: Der Verschlüsselungs-Schlüssel (DEK) wird jetzt dauerhaft (Android
+  Keystore-verschlüsselt) auf dem Gerät gespeichert statt nur im RAM – nötig, damit Auto-Sync auch
+  im Hintergrund funktioniert (z. B. nach automatischem Bluetooth-Start). Das Passwort selbst wird
+  weiterhin nirgends gespeichert.
+
 ## [0.2.3] - 2026-08-05
 
 ### Behoben

@@ -14,6 +14,15 @@ import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import de.kornelriedl.drivetrack.MainActivity
+import de.kornelriedl.drivetrack.data.CarPreferences
+import de.kornelriedl.drivetrack.data.server.ServerSync
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Vordergrund-Service, der ausschließlich dafür sorgt, dass Android die App während
@@ -33,6 +42,10 @@ class TripTrackingService : Service() {
         }
     }
 
+    // Eigener Scope für den periodischen Live-Sync - läuft unabhängig von der Notification-Schleife
+    private val serviceScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+    private var liveSyncJob: Job? = null
+
     override fun onCreate() {
         super.onCreate()
         tracker = LocationTracker.getInstance(this)
@@ -42,12 +55,41 @@ class TripTrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification())
         handler.post(notificationUpdater)
+        startLiveSyncLoop()
         return START_STICKY
     }
 
     override fun onDestroy() {
         handler.removeCallbacks(notificationUpdater)
+        liveSyncJob?.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Sicherheitsnetz falls Handy/App mittendrin ausfällt: lädt während der Aufzeichnung alle
+     * paar Minuten einen Zwischenstand hoch (siehe ServerSync.syncLiveTripIfPossible). Läuft
+     * best-effort - ohne Login/Netz passiert einfach nichts, kein Fehler sichtbar für den Nutzer.
+     */
+    private fun startLiveSyncLoop() {
+        if (liveSyncJob?.isActive == true) return
+        liveSyncJob = serviceScope.launch {
+            while (tracker.isRecording) {
+                delay(LIVE_SYNC_INTERVAL_MS)
+                if (!tracker.isRecording) break
+                // Snapshot MUSS auf dem Main-Thread gezogen werden - LocationTracker.points wird
+                // vom GPS-Callback ebenfalls dort verändert (siehe LiveTripSnapshot-Doku).
+                val snapshot = ServerSync.LiveTripSnapshot(
+                    startTimeMillis = tracker.startTimeMillis,
+                    distanceMeters = tracker.distanceMeters,
+                    maxSpeedKmh = tracker.maxSpeedKmhSoFar,
+                    points = tracker.pointsSoFar
+                )
+                val carId = CarPreferences.getSelectedCarId(applicationContext)
+                withContext(Dispatchers.IO) {
+                    ServerSync.syncLiveTripIfPossible(applicationContext, snapshot, carId)
+                }
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -120,6 +162,7 @@ class TripTrackingService : Service() {
     companion object {
         private const val CHANNEL_ID = "trip_tracking_channel"
         private const val NOTIFICATION_ID = 1001
+        private const val LIVE_SYNC_INTERVAL_MS = 3 * 60 * 1000L // alle 3 Minuten
 
         fun start(context: Context) {
             val intent = Intent(context, TripTrackingService::class.java)

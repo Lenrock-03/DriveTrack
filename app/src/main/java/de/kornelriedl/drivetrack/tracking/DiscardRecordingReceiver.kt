@@ -3,6 +3,10 @@ package de.kornelriedl.drivetrack.tracking
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import de.kornelriedl.drivetrack.data.server.ServerSync
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Wird ausschließlich vom "Verwerfen"-Button in der Aufzeichnungs-Notification ausgelöst
@@ -18,5 +22,16 @@ class DiscardRecordingReceiver : BroadcastReceiver() {
             tracker.stop() // Rückgabewert wird absichtlich ignoriert
         }
         TripTrackingService.stop(context)
+
+        // Live-Zwischenstand auf dem Server war ja nur für DIESE (jetzt verworfene) Aufzeichnung
+        // gedacht - aufräumen, damit da kein Geister-Zwischenstand liegen bleibt.
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                ServerSync.deleteLiveTripIfPossible(context)
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 }

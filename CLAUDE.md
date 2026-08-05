@@ -33,13 +33,41 @@ Kompletter Code in `data/server/`:
 - `ServerCrypto.kt` – PBKDF2 (150.000 Iterationen) + AES-256-GCM. Ein zufälliger Datenschlüssel (DEK)
   verschlüsselt das Backup; der DEK wird zweifach verpackt gespeichert (mit Passwort UND mit
   Recovery-Code) – der Server sieht nie Passwort, Recovery-Code oder DEK im Klartext
-- `ServerSession.kt` – hält den entschlüsselten DEK NUR im RAM, nie persistiert
-- `ServerAuthPreferences.kt` – Token/Salt via `EncryptedSharedPreferences`
+- `ServerSession.kt` – hält den entschlüsselten DEK für die App-Sitzung im RAM
+- `ServerAuthPreferences.kt` – Token/Salt via `EncryptedSharedPreferences`; seit Auto-Sync
+  (App 0.3.0) zusätzlich der entschlüsselte DEK selbst (`saveDek()`/`getDek()`, ebenfalls
+  Keystore-verschlüsselt) – **bewusste Sicherheitsmodell-Änderung**: der DEK überlebt jetzt einen
+  App-Neustart (vorher: nur RAM, nach jedem Neustart musste das Passwort erneut eingegeben werden).
+  Nötig, damit Auto-Sync auch im Hintergrund läuft (z. B. nach Bluetooth-Auto-Start, ohne dass
+  vorher je die App geöffnet wurde). Das Passwort selbst wird weiterhin nirgends gespeichert.
 - `ServerApi.kt` – simpler HTTP-Client (nur `java.net` + `org.json`, keine externe Lib) gegen die Backend-API
-- UI: `ui/screens/ServerBackupScreen.kt` (Login/Registrieren/Entsperren/Sichern/Wiederherstellen/Passwort vergessen)
+- `ServerSync.kt` – Auto-Sync-Orchestrierung (siehe eigener Abschnitt unten)
+- UI: `ui/screens/ServerBackupScreen.kt` (Login/Registrieren/Entsperren/Sichern/Wiederherstellen/Passwort vergessen) –
+  bleibt als manueller Fallback bestehen, wird durch Auto-Sync aber seltener gebraucht
 
 Backup-JSON-Struktur (muss mit Backend + Web-App übereinstimmen): `{ version, users[], cars[], trips[] }`,
 gebaut von `export/BackupExporter.kt` (`buildBackupJson()` / `importBackupFromJson()`).
+
+## Auto-Sync mit dem Server (seit 0.3.0)
+
+Fahrten werden automatisch synchronisiert, ohne dass der Nutzer manuell "Sichern" tippen muss – nur
+falls eingeloggt (Token vorhanden) und der DEK verfügbar ist (siehe oben), sonst passiert einfach
+still nichts (kein Fehler sichtbar, manueller Button bleibt als Fallback):
+
+- **Während der Aufzeichnung**: `TripTrackingService` lädt alle 3 Minuten (`LIVE_SYNC_INTERVAL_MS`)
+  einen Zwischenstand der laufenden Fahrt an `PUT /api/live-trip` hoch (eigenes, leichtgewichtiges
+  JSON – nicht das volle Backup-Format). Sicherheitsnetz falls Handy/App mittendrin ausfällt.
+  **Thread-Achtung**: Der Snapshot (`ServerSync.LiveTripSnapshot`) muss auf dem Main-Thread gezogen
+  werden, BEVOR auf `Dispatchers.IO` gewechselt wird – `LocationTracker.points` wird vom
+  GPS-Callback ebenfalls auf dem Main-Thread verändert, ein direkter Zugriff aus einer
+  Hintergrund-Coroutine wäre nicht thread-sicher.
+- **Nach dem Beenden**: `MainActivity` ruft nach dem lokalen Speichern
+  `ServerSync.syncFullBackupIfPossible()` auf – normaler Voll-Sync (wie der bisherige manuelle
+  Button), holt Nutzer/Autos/Fahrten frisch aus der DB (nicht die Compose-State-Listen, die den
+  gerade eingefügten Trip evtl. noch nicht enthalten). Löscht danach den Live-Zwischenstand auf dem
+  Server (`DELETE /api/live-trip`) – die fertige Fahrt ist jetzt Teil des echten Backups.
+- **Beim Verwerfen** (Bluetooth-Fehlstart, siehe `DiscardRecordingReceiver`): nur der
+  Live-Zwischenstand wird gelöscht, kein Backup-Sync (die Fahrt wurde ja nie gespeichert).
 
 ## Bekannte Stolpersteine (bereits gelöst, für Kontext)
 

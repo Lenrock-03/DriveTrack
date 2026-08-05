@@ -105,6 +105,7 @@ fun ServerBackupScreen(
                                         ServerAuthPreferences.getEmail(context) ?: "",
                                         passwordSalt, dekWrappedPassword
                                     )
+                                    ServerAuthPreferences.saveDek(context, dek) // für Auto-Sync im Hintergrund
                                     loggedIn = true
                                     unlocked = true
                                     mode = "status"
@@ -239,6 +240,7 @@ fun ServerBackupScreen(
                                     )
                                 }
                                 ServerSession.setDek(dek)
+                                ServerAuthPreferences.saveDek(context, dek) // für Auto-Sync im Hintergrund
                                 unlocked = true
                                 mode = "status"
                             } catch (e: Exception) {
@@ -597,7 +599,9 @@ private fun StatusView(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "Backups sind Ende-zu-Ende-verschlüsselt gespeichert.",
+                "Backups sind Ende-zu-Ende-verschlüsselt gespeichert. Neue Fahrten werden " +
+                    "automatisch nach dem Beenden gesichert – während der Aufzeichnung läuft " +
+                    "zusätzlich alle paar Minuten ein Zwischen-Sync als Sicherheitsnetz.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -20,6 +20,9 @@ import de.kornelriedl.drivetrack.data.UserPreferences
 import de.kornelriedl.drivetrack.data.UserProfile
 import de.kornelriedl.drivetrack.data.local.AppDatabase
 import de.kornelriedl.drivetrack.data.local.TrackFileStore
+import de.kornelriedl.drivetrack.data.server.ServerAuthPreferences
+import de.kornelriedl.drivetrack.data.server.ServerSession
+import de.kornelriedl.drivetrack.data.server.ServerSync
 import de.kornelriedl.drivetrack.data.toTrip
 import de.kornelriedl.drivetrack.export.BackupExporter
 import de.kornelriedl.drivetrack.export.GpxImporter
@@ -35,6 +38,7 @@ import de.kornelriedl.drivetrack.ui.theme.DriveTrackTheme
 import de.kornelriedl.drivetrack.tracking.LocationTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.osmdroid.config.Configuration
@@ -99,6 +103,15 @@ fun DriveTrackApp(
     val trips by tripDao.getAllTrips().collectAsState(initial = emptyList())
     val cars by carDao.getAllCars().collectAsState(initial = emptyList())
     val users by userDao.getAllUsers().collectAsState(initial = emptyList())
+
+    // DEK aus dem verschlüsselten Gerätespeicher zurückholen, falls die App neu gestartet wurde
+    // (z. B. durch Bluetooth-Auto-Start) - erst dadurch kann Auto-Sync auch dann laufen, ohne
+    // dass der Nutzer die App vorher manuell geöffnet und entsperrt hat.
+    LaunchedEffect(Unit) {
+        if (!ServerSession.isUnlocked) {
+            ServerAuthPreferences.getDek(context)?.let { ServerSession.setDek(it) }
+        }
+    }
 
     var activeUserId by remember { mutableStateOf(UserPreferences.getActiveUserId(context)) }
     val onSelectUser: (Long?) -> Unit = { id ->
@@ -320,6 +333,17 @@ fun DriveTrackApp(
                         val trip = result.toTrip(carId = selectedCarId)
                         val newId = tripDao.insertTrip(trip)
                         withContext(Dispatchers.IO) { TrackFileStore.write(context, newId, trip.gpxTrackJson) }
+                        // Frisch aus der DB laden statt der Compose-State-Listen zu nehmen: die
+                        // reaktiven Flows oben haben den gerade eingefügten Trip zu diesem
+                        // Zeitpunkt noch nicht garantiert nachgezogen.
+                        withContext(Dispatchers.IO) {
+                            ServerSync.syncFullBackupIfPossible(
+                                context,
+                                userDao.getAllUsers().first(),
+                                carDao.getAllCars().first(),
+                                tripDao.getAllTrips().first()
+                            )
+                        }
                     }
                     currentTab = NavTab.HOME
                 },

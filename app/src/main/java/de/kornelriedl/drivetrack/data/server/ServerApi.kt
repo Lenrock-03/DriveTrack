@@ -137,4 +137,18 @@ object ServerApi {
     fun backupHistory(token: String): ApiResult {
         return safeRequest("/backup/history", "GET", null, token)
     }
+
+    /** Zwischenstand einer laufenden Aufzeichnung speichern (Upsert, keine Historie). */
+    fun uploadLiveTrip(token: String, ciphertext: String, iv: String): ApiResult {
+        val body = JSONObject().apply {
+            put("ciphertext", ciphertext)
+            put("iv", iv)
+        }
+        return safeRequest("/live-trip", "PUT", body, token)
+    }
+
+    /** Wird nach Fahrtende (oder Verwerfen) aufgerufen - der Zwischenstand ist dann überflüssig. */
+    fun deleteLiveTrip(token: String): ApiResult {
+        return safeRequest("/live-trip", "DELETE", null, token)
+    }
 }

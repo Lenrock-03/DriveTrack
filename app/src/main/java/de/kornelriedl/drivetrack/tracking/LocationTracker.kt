@@ -53,9 +53,17 @@ class LocationTracker(context: Context) {
         private set
 
     private var maxSpeedKmh = 0.0
+    /** Für den Live-Sync während der Aufzeichnung (siehe ServerSync) - schreibgeschützte Sicht auf maxSpeedKmh. */
+    val maxSpeedKmhSoFar: Double get() = maxSpeedKmh
+
     private var startTime = 0L
+    /** Zeitpunkt des Aufzeichnungsstarts - für den Live-Sync während der Aufzeichnung. */
+    val startTimeMillis: Long get() = startTime
+
     private var lastLocation: Location? = null
     private val points = mutableListOf<Triple<Double, Double, Long>>()
+    /** Für den Live-Sync während der Aufzeichnung (siehe ServerSync) - Kopie der bisherigen Punkte. */
+    val pointsSoFar: List<Triple<Double, Double, Long>> get() = points.toList()
     private var timerJob: Job? = null
 
     // Live-Streckenverlauf für die Kartenanzeige während der Aufzeichnung (lat, lon)

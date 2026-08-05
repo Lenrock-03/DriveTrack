@@ -1,10 +1,12 @@
 package de.kornelriedl.drivetrack.data.server
 
 /**
- * Hält den entschlüsselten Datenschlüssel (DEK) nur für die Dauer der App-Sitzung im Speicher.
- * Wird die App beendet/neu gestartet, ist der DEK weg – der Nutzer muss dann sein Passwort
- * (oder den Recovery-Code) erneut eingeben, um ihn wieder freizuschalten. Das ist beabsichtigt:
- * der DEK darf nirgends dauerhaft im Klartext gespeichert werden.
+ * Hält den entschlüsselten Datenschlüssel (DEK) für die aktuelle App-Sitzung im Speicher.
+ * Seit Auto-Sync (App 0.3.0) wird der DEK zusätzlich verschlüsselt persistiert (siehe
+ * ServerAuthPreferences.saveDek/getDek) und beim App-Start automatisch hierher zurückgeladen
+ * (siehe MainActivity) – nur so kann die App auch im Hintergrund automatisch synchronisieren,
+ * ohne bei jedem Neustart nach dem Passwort zu fragen. dek bleibt trotzdem NUR hier im RAM
+ * unverschlüsselt; auf der Festplatte liegt er immer nur Keystore-verschlüsselt.
  */
 object ServerSession {
     var dek: ByteArray? = null

@@ -34,8 +34,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import de.kornelriedl.drivetrack.R
@@ -49,6 +54,7 @@ import org.osmdroid.views.overlay.Polyline
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 import android.graphics.Color as AndroidColor
 import androidx.compose.ui.graphics.Color as ComposeColor
 
@@ -401,7 +407,10 @@ private fun SpeedGraph(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val points = remember(trip.id) { trip.toSpeedSeries(context) }
+    // Median-Filter gegen einzelne GPS-Ausreißer (kurzer ungenauer Fix -> rechnerisch absurd hohe
+    // Distanz/Zeit-Geschwindigkeit) - siehe medianFiltered(). Ohne den Filter sehen solche
+    // Ausreißer wie künstliche Nadel-Spitzen statt eines realistischen Geschwindigkeitsverlaufs aus.
+    val points = remember(trip.id) { trip.toSpeedSeries(context).medianFiltered() }
 
     if (points.size < 2) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -415,15 +424,15 @@ private fun SpeedGraph(
     }
 
     var selectedIndex by remember(trip.id) { mutableStateOf(points.size - 1) }
-    // Skala bewusst NICHT aus dem Maximum der selbst berechneten Segment-Geschwindigkeiten nehmen:
-    // einzelne GPS-Ausreißer (kurzer ungenauer Fix) erzeugen sonst rechnerisch absurd hohe Werte
-    // (Distanz/Zeit zwischen zwei Punkten), die die ganze Skala stauchen und den Rest der Fahrt
-    // am unteren Rand "kleben" lassen. trip.maxSpeedKmh kommt von loc.speed (GPS-Chip, Doppler-
-    // basiert) und ist schon in den Stat-Kacheln zu sehen - deutlich robuster als unsere eigene
-    // Positions-Differenz-Rechnung. Einzelne Ausreißer werden beim Zeichnen einfach oben gekappt.
+    // Zusätzliche Sicherheitsgrenze: trip.maxSpeedKmh kommt von loc.speed (GPS-Chip, Doppler-
+    // basiert, deutlich robuster als unsere eigene Positions-Differenz-Rechnung) und ist schon in
+    // den Stat-Kacheln zu sehen. scaleMax rundet das für eine lesbare Achsenbeschriftung auf.
     val maxSpeed = remember(trip.id) { trip.maxSpeedKmh.toFloat().coerceAtLeast(1f) }
+    val scaleMax = remember(maxSpeed) { niceCeilSpeed(maxSpeed) }
     val totalDuration = remember(points) { points.last().offsetSeconds.coerceAtLeast(1f) }
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.GERMANY) }
+    val textMeasurer = rememberTextMeasurer()
+    val leftGutterPx = with(LocalDensity.current) { 34.dp.toPx() } // Platz links für die Achsenbeschriftung
 
     // Meldet die aktuell ausgewählte Position an die Karte, damit dort der Scrub-Marker mitwandert
     LaunchedEffect(selectedIndex, points) {
@@ -458,25 +467,52 @@ private fun SpeedGraph(
                 .weight(1f)
                 .pointerInput(points) {
                     detectTapGestures { offset ->
-                        val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                        val plotW = (size.width - leftGutterPx).coerceAtLeast(1f)
+                        val fraction = ((offset.x - leftGutterPx) / plotW).coerceIn(0f, 1f)
                         selectedIndex = (fraction * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
                     }
                 }
                 .pointerInput(points) {
                     detectDragGestures { change, _ ->
                         change.consume()
-                        val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                        val plotW = (size.width - leftGutterPx).coerceAtLeast(1f)
+                        val fraction = ((change.position.x - leftGutterPx) / plotW).coerceIn(0f, 1f)
                         selectedIndex = (fraction * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
                     }
                 }
         ) {
             val w = size.width
             val h = size.height
+            val leftGutter = leftGutterPx
+            val plotW = (w - leftGutter).coerceAtLeast(1f)
+
+            // Gitterlinien + Achsenbeschriftung (0 / 1/3 / 2/3 / voll), damit sich die Skala ablesen lässt
+            listOf(0f, 1f / 3f, 2f / 3f, 1f).forEach { frac ->
+                val y = h - frac * h
+                val value = (scaleMax * frac).roundToInt()
+                drawLine(
+                    color = onSurfaceVariant.copy(alpha = 0.12f),
+                    start = Offset(leftGutter, y),
+                    end = Offset(w, y),
+                    strokeWidth = 1f
+                )
+                val label = textMeasurer.measure(
+                    text = "$value",
+                    style = TextStyle(fontSize = 10.sp, color = onSurfaceVariant.copy(alpha = 0.6f))
+                )
+                drawText(
+                    textLayoutResult = label,
+                    topLeft = Offset(
+                        leftGutter - 6f - label.size.width,
+                        (y - label.size.height / 2f).coerceIn(0f, h - label.size.height)
+                    )
+                )
+            }
 
             val path = Path()
             points.forEachIndexed { i, p ->
-                val x = (p.offsetSeconds / totalDuration) * w
-                val y = h - (p.speedKmh / maxSpeed).coerceAtMost(1f) * h
+                val x = leftGutter + (p.offsetSeconds / totalDuration) * plotW
+                val y = h - (p.speedKmh / scaleMax).coerceAtMost(1f) * h
                 if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
             drawPath(
@@ -486,8 +522,8 @@ private fun SpeedGraph(
             )
 
             val sel = points[selectedIndex]
-            val selX = (sel.offsetSeconds / totalDuration) * w
-            val selY = h - (sel.speedKmh / maxSpeed).coerceAtMost(1f) * h
+            val selX = leftGutter + (sel.offsetSeconds / totalDuration) * plotW
+            val selY = h - (sel.speedKmh / scaleMax).coerceAtMost(1f) * h
 
             drawLine(
                 color = onSurfaceVariant.copy(alpha = 0.4f),
@@ -506,6 +542,25 @@ private fun SpeedGraph(
         }
     }
 }
+
+/**
+ * Median-Filter über die Geschwindigkeit (Fenster von 5 Punkten): einzelne GPS-Ausreißer (kurzer
+ * ungenauer Fix) erzeugen sonst isolierte Nadel-Spitzen statt eines realistisch wirkenden Verlaufs
+ * - der Median eines Fensters ignoriert genau solche einzelnen Ausreißer, echte Beschleunigungs-/
+ * Bremstrends bleiben erhalten. cumulativeKm/Position bleiben unverändert.
+ */
+private fun List<GraphPoint>.medianFiltered(windowRadius: Int = 2): List<GraphPoint> {
+    val raw = map { it.speedKmh }
+    return mapIndexed { i, p ->
+        val lo = (i - windowRadius).coerceAtLeast(0)
+        val hi = (i + windowRadius).coerceAtMost(raw.size - 1)
+        val window = raw.subList(lo, hi + 1).sorted()
+        p.copy(speedKmh = window[window.size / 2])
+    }
+}
+
+/** Rundet für eine lesbare Achsenbeschriftung auf ein "glattes" Vielfaches von 10 auf. */
+private fun niceCeilSpeed(value: Float): Float = maxOf(10f, kotlin.math.ceil(value / 10f) * 10f)
 
 /** Wandelt die gespeicherten GPS-Punkte in eine Zeit/Geschwindigkeit/Distanz-Serie für den Graphen um. */
 private fun Trip.toSpeedSeries(context: android.content.Context): List<GraphPoint> {

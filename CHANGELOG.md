@@ -5,6 +5,16 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.2.3] - 2026-08-05
+
+### Behoben
+- Geschwindigkeits-Graph (Fahrt-Detail) wirkte durch GPS-Ausreißer unrealistisch (isolierte Nadel-
+  Spitzen statt echtem Verlauf): Median-Filter (5-Punkte-Fenster) über die Geschwindigkeit ergänzt
+
+### Hinzugefügt
+- Achsenbeschriftung am Geschwindigkeits-Graph (Gitterlinien + km/h-Werte), damit sich die Skala
+  ablesen lässt. Derselbe Fix wie in der Web-App v1.1.3, da beide dieselbe Berechnung nutzen.
+
 ## [0.2.2] - 2026-08-05
 
 ### Behoben

@@ -10,6 +10,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.graphics.Path
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.local.TrackFileStore
 import org.json.JSONArray
 import java.io.File
 import java.net.URL
@@ -42,7 +43,7 @@ object MapThumbnailGenerator {
             BitmapFactory.decodeFile(cacheFile.absolutePath)?.let { return it }
         }
 
-        val points = parsePoints(trip.gpxTrackJson)
+        val points = parsePoints(TrackFileStore.read(context, trip.id))
         if (points.size < 2) return null
 
         val bitmap = renderThumbnail(points) ?: return null

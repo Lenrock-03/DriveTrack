@@ -99,9 +99,8 @@ object GpxImporter {
             endTimestamp = endTs,
             distanceMeters = distanceMeters,
             avgSpeedKmh = avgSpeedKmh,
-            maxSpeedKmh = maxSpeedKmh,
-            gpxTrackJson = pointsJson
-        )
+            maxSpeedKmh = maxSpeedKmh
+        ).apply { gpxTrackJson = pointsJson }
     }
 
     private val timeFormats = listOf(

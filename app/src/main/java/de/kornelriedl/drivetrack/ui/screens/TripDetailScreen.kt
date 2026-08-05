@@ -224,7 +224,7 @@ private fun RouteDetailMap(
                 minZoomLevel = 4.0
                 maxZoomLevel = 20.0
 
-                val points = trip.toGeoPoints()
+                val points = trip.toGeoPoints(ctx)
 
                 if (points.size >= 2) {
                     val polyline = Polyline(this).apply {
@@ -400,7 +400,8 @@ private fun SpeedGraph(
     onScrub: (Pair<Double, Double>?) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val points = remember(trip.id) { trip.toSpeedSeries() }
+    val context = LocalContext.current
+    val points = remember(trip.id) { trip.toSpeedSeries(context) }
 
     if (points.size < 2) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -501,8 +502,8 @@ private fun SpeedGraph(
 }
 
 /** Wandelt die gespeicherten GPS-Punkte in eine Zeit/Geschwindigkeit/Distanz-Serie für den Graphen um. */
-private fun Trip.toSpeedSeries(): List<GraphPoint> {
-    val raw = toTrackPoints()
+private fun Trip.toSpeedSeries(context: android.content.Context): List<GraphPoint> {
+    val raw = toTrackPoints(context)
     if (raw.size < 2) return emptyList()
 
     val startTs = raw.first().third

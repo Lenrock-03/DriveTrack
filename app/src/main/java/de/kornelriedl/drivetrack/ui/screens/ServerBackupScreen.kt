@@ -264,7 +264,7 @@ fun ServerBackupScreen(
                                 isLoading = false
                                 return@launch
                             }
-                            val json = BackupExporter.buildBackupJson(users, cars, trips)
+                            val json = BackupExporter.buildBackupJson(context, users, cars, trips)
                             val blob = withContext(Dispatchers.Default) {
                                 ServerCrypto.encryptWithDek(json, dek)
                             }

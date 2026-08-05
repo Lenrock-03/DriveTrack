@@ -1,6 +1,7 @@
 package de.kornelriedl.drivetrack.ui.screens
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -22,6 +23,7 @@ import androidx.core.graphics.drawable.toBitmap
 import de.kornelriedl.drivetrack.R
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.local.TrackFileStore
 import de.kornelriedl.drivetrack.ui.components.CarSelector
 import org.json.JSONArray
 import org.osmdroid.tileprovider.tilesource.XYTileSource
@@ -58,10 +60,10 @@ fun buildContrastFilter(): android.graphics.ColorMatrixColorFilter {
     return android.graphics.ColorMatrixColorFilter(matrix)
 }
 
-/** Wandelt das gespeicherte JSON der Fahrt zurück in GeoPoints für die Kartenanzeige. */
-fun Trip.toGeoPoints(): List<GeoPoint> {
+/** Wandelt das gespeicherte JSON der Fahrt (siehe TrackFileStore) zurück in GeoPoints für die Kartenanzeige. */
+fun Trip.toGeoPoints(context: Context): List<GeoPoint> {
     return try {
-        val arr = JSONArray(gpxTrackJson)
+        val arr = JSONArray(TrackFileStore.read(context, id))
         (0 until arr.length()).map { i ->
             val obj = arr.getJSONObject(i)
             GeoPoint(obj.getDouble("lat"), obj.getDouble("lon"))
@@ -72,9 +74,9 @@ fun Trip.toGeoPoints(): List<GeoPoint> {
 }
 
 /** Wie toGeoPoints(), behält aber zusätzlich den Zeitstempel jedes Punkts (lat, lon, ts). */
-fun Trip.toTrackPoints(): List<Triple<Double, Double, Long>> {
+fun Trip.toTrackPoints(context: Context): List<Triple<Double, Double, Long>> {
     return try {
-        val arr = JSONArray(gpxTrackJson)
+        val arr = JSONArray(TrackFileStore.read(context, id))
         (0 until arr.length()).map { i ->
             val obj = arr.getJSONObject(i)
             Triple(obj.getDouble("lat"), obj.getDouble("lon"), obj.getLong("ts"))
@@ -147,7 +149,7 @@ fun MapScreen(
 
                         // Alle bisherigen Fahrten als Linien einzeichnen
                         trips.forEach { trip ->
-                            val points = trip.toGeoPoints()
+                            val points = trip.toGeoPoints(ctx)
                             if (points.size >= 2) {
                                 val polyline = Polyline(this).apply {
                                     setPoints(points)

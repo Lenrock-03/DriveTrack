@@ -1,6 +1,7 @@
 package de.kornelriedl.drivetrack.data
 
 import androidx.room.Entity
+import androidx.room.Ignore
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "trips")
@@ -12,9 +13,17 @@ data class Trip(
     val distanceMeters: Double,
     val avgSpeedKmh: Double,
     val maxSpeedKmh: Double,
-    val gpxTrackJson: String,          // GPS-Punkte serialisiert (lat,lon,timestamp)
     val carId: Long? = null            // welches Auto gefahren wurde (optional)
 ) {
+    // GPS-Punkte (lat,lon,timestamp) als JSON-Array – bewusst KEINE Room-Spalte (daher außerhalb
+    // des Konstruktors, @Ignore): einzelne Fahrten (z.B. ganztägig, viele tausend Punkte) sprengen
+    // sonst das ca. 2 MB CursorWindow-Limit von Android beim Laden der Fahrtenliste
+    // (SQLiteBlobTooBigException). Stattdessen als Datei pro Fahrt gespeichert, siehe
+    // TrackFileStore. Muss nach dem Insert separat über TrackFileStore.write() persistiert und
+    // bei Bedarf über TrackFileStore.read() geladen werden (Default "" = "noch nicht geladen").
+    @Ignore
+    var gpxTrackJson: String = ""
+
     val durationMinutes: Long
         get() = (endTimestamp - startTimestamp) / 60000
 
@@ -37,7 +46,6 @@ fun de.kornelriedl.drivetrack.tracking.RecordingResult.toTrip(name: String = "Fa
         distanceMeters = distanceMeters,
         avgSpeedKmh = avgSpeedKmh,
         maxSpeedKmh = maxSpeedKmh,
-        gpxTrackJson = pointsJson,
         carId = carId
-    )
+    ).apply { gpxTrackJson = pointsJson }
 }

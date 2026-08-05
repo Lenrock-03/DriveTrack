@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.local.TrackFileStore
 import org.json.JSONArray
 import java.io.BufferedOutputStream
 import java.io.File
@@ -23,9 +24,9 @@ object GpxExporter {
     }
 
     /** Baut den GPX-1.1-XML-Inhalt aus den gespeicherten GPS-Punkten der Fahrt. */
-    fun buildGpxContent(trip: Trip): String {
+    fun buildGpxContent(context: Context, trip: Trip): String {
         val points = try {
-            val arr = JSONArray(trip.gpxTrackJson)
+            val arr = JSONArray(TrackFileStore.read(context, trip.id))
             (0 until arr.length()).map { i ->
                 val obj = arr.getJSONObject(i)
                 Triple(obj.getDouble("lat"), obj.getDouble("lon"), obj.getLong("ts"))
@@ -64,7 +65,7 @@ object GpxExporter {
         val gpxDir = File(context.cacheDir, "gpx").apply { mkdirs() }
         val safeName = trip.name.replace(Regex("[^A-Za-z0-9_\\-]"), "_")
         val file = File(gpxDir, "${safeName}_${trip.id}.gpx")
-        file.writeText(buildGpxContent(trip))
+        file.writeText(buildGpxContent(context, trip))
 
         return FileProvider.getUriForFile(
             context,
@@ -101,7 +102,7 @@ object GpxExporter {
                     counter++
                 }
                 zos.putNextEntry(ZipEntry(entryName))
-                zos.write(buildGpxContent(trip).toByteArray(Charsets.UTF_8))
+                zos.write(buildGpxContent(context, trip).toByteArray(Charsets.UTF_8))
                 zos.closeEntry()
             }
         }

@@ -8,6 +8,7 @@ import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.UserProfile
 import de.kornelriedl.drivetrack.data.local.AppDatabase
+import de.kornelriedl.drivetrack.data.local.TrackFileStore
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,7 +33,7 @@ object BackupExporter {
 
     private const val BACKUP_VERSION = 1
 
-    fun buildBackupJson(users: List<UserProfile>, cars: List<Car>, trips: List<Trip>): String {
+    fun buildBackupJson(context: Context, users: List<UserProfile>, cars: List<Car>, trips: List<Trip>): String {
         val root = JSONObject()
         root.put("version", BACKUP_VERSION)
 
@@ -63,7 +64,7 @@ object BackupExporter {
                 put("distanceMeters", t.distanceMeters)
                 put("avgSpeedKmh", t.avgSpeedKmh)
                 put("maxSpeedKmh", t.maxSpeedKmh)
-                put("gpxTrackJson", t.gpxTrackJson)
+                put("gpxTrackJson", TrackFileStore.read(context, t.id))
                 // Autonamen statt nur der ID mitschreiben, damit die Zuordnung Fahrt→Auto
                 // auch beim Import in eine andere/leere Datenbank robust nachvollzogen werden kann.
                 put("carId", t.carId ?: JSONObject.NULL)
@@ -78,7 +79,7 @@ object BackupExporter {
     fun shareBackup(context: Context, users: List<UserProfile>, cars: List<Car>, trips: List<Trip>) {
         val gpxDir = File(context.cacheDir, "gpx").apply { mkdirs() }
         val file = File(gpxDir, "DriveTrack_Backup_${System.currentTimeMillis()}.json")
-        file.writeText(buildBackupJson(users, cars, trips))
+        file.writeText(buildBackupJson(context, users, cars, trips))
 
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val intent = Intent(Intent.ACTION_SEND).apply {
@@ -181,8 +182,9 @@ object BackupExporter {
 
             val oldCarId = if (obj.isNull("carId")) null else obj.getLong("carId")
             val newCarId = oldCarId?.let { carIdMap[it] }
+            val gpxTrackJson = obj.getString("gpxTrackJson")
 
-            tripDao.insertTrip(
+            val newTripId = tripDao.insertTrip(
                 Trip(
                     name = obj.getString("name"),
                     startTimestamp = startTimestamp,
@@ -190,10 +192,10 @@ object BackupExporter {
                     distanceMeters = obj.getDouble("distanceMeters"),
                     avgSpeedKmh = obj.getDouble("avgSpeedKmh"),
                     maxSpeedKmh = obj.getDouble("maxSpeedKmh"),
-                    gpxTrackJson = obj.getString("gpxTrackJson"),
                     carId = newCarId
                 )
             )
+            TrackFileStore.write(context, newTripId, gpxTrackJson)
             tripsImported++
         }
 

@@ -19,6 +19,7 @@ import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.UserPreferences
 import de.kornelriedl.drivetrack.data.UserProfile
 import de.kornelriedl.drivetrack.data.local.AppDatabase
+import de.kornelriedl.drivetrack.data.local.TrackFileStore
 import de.kornelriedl.drivetrack.data.toTrip
 import de.kornelriedl.drivetrack.export.BackupExporter
 import de.kornelriedl.drivetrack.export.GpxImporter
@@ -164,7 +165,8 @@ fun DriveTrackApp(
         scope.launch {
             val trip = withContext(Dispatchers.IO) { GpxImporter.importFromUri(context, uri) }
             if (trip != null) {
-                tripDao.insertTrip(trip)
+                val newId = tripDao.insertTrip(trip)
+                withContext(Dispatchers.IO) { TrackFileStore.write(context, newId, trip.gpxTrackJson) }
                 currentTab = NavTab.HOME
                 Toast.makeText(context, "„${trip.name}“ importiert", Toast.LENGTH_SHORT).show()
             } else {
@@ -272,7 +274,10 @@ fun DriveTrackApp(
                     scope.launch { tripDao.updateTrip(trip.copy(name = newName)) }
                 },
                 onDeleteTrip = { trip ->
-                    scope.launch { tripDao.deleteTrip(trip) }
+                    scope.launch {
+                        tripDao.deleteTrip(trip)
+                        withContext(Dispatchers.IO) { TrackFileStore.delete(context, trip.id) }
+                    }
                 },
                 cars = cars,
                 selectedCarId = selectedCarId,
@@ -293,7 +298,10 @@ fun DriveTrackApp(
                     scope.launch { tripDao.updateTrip(trip.copy(name = newName)) }
                 },
                 onDeleteTrip = { trip ->
-                    scope.launch { tripDao.deleteTrip(trip) }
+                    scope.launch {
+                        tripDao.deleteTrip(trip)
+                        withContext(Dispatchers.IO) { TrackFileStore.delete(context, trip.id) }
+                    }
                 },
                 cars = cars,
                 selectedCarId = selectedCarId,
@@ -306,7 +314,9 @@ fun DriveTrackApp(
                 tracker = tracker,
                 onRecordingFinished = { result ->
                     scope.launch {
-                        tripDao.insertTrip(result.toTrip(carId = selectedCarId))
+                        val trip = result.toTrip(carId = selectedCarId)
+                        val newId = tripDao.insertTrip(trip)
+                        withContext(Dispatchers.IO) { TrackFileStore.write(context, newId, trip.gpxTrackJson) }
                     }
                     currentTab = NavTab.HOME
                 },

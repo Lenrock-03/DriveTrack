@@ -752,12 +752,16 @@ private fun SpeedGraph(
 }
 
 /**
- * Median-Filter über die Geschwindigkeit (Fenster von 5 Punkten): einzelne GPS-Ausreißer (kurzer
+ * Median-Filter über die Geschwindigkeit (Fenster von 9 Punkten): einzelne GPS-Ausreißer (kurzer
  * ungenauer Fix) erzeugen sonst isolierte Nadel-Spitzen statt eines realistisch wirkenden Verlaufs
  * - der Median eines Fensters ignoriert genau solche einzelnen Ausreißer, echte Beschleunigungs-/
  * Bremstrends bleiben erhalten. cumulativeKm/Position bleiben unverändert.
+ * windowRadius=4 statt 2: GPS-Aussetzer (z.B. beim Einrasten des Fixes zu Fahrtbeginn oder in einer
+ * Unterführung) liefern oft mehrere aufeinanderfolgende schlechte Punkte statt nur einem einzelnen
+ * - ein 5-Punkte-Fenster reißt bei 3 aufeinanderfolgenden Ausreißern durch (der Ausreißer wird selbst
+ * zum Median), ein 9-Punkte-Fenster hält das deutlich zuverlässiger ab (verifiziert per Test).
  */
-private fun List<GraphPoint>.medianFiltered(windowRadius: Int = 2): List<GraphPoint> {
+private fun List<GraphPoint>.medianFiltered(windowRadius: Int = 4): List<GraphPoint> {
     val raw = map { it.speedKmh }
     return mapIndexed { i, p ->
         val lo = (i - windowRadius).coerceAtLeast(0)
@@ -767,20 +771,23 @@ private fun List<GraphPoint>.medianFiltered(windowRadius: Int = 2): List<GraphPo
     }
 }
 
+// Letzte Sicherheitsgrenze für die Anzeige, bewusst NICHT trip.maxSpeedKmh: dieser Wert kommt zwar
+// normalerweise vom GPS-Chip direkt (Doppler-basiert, robuster als Positions-Differenzen), kann
+// aber selbst durch genau dasselbe GPS-Problem verfälscht sein (z.B. beim Einrasten des Fixes zu
+// Fahrtbeginn) - ein Clamp darauf würde dann einen verdächtig glatten Plateau exakt auf diesem
+// (falschen) Wert erzeugen, statt das Problem sichtbar zu machen. 260 km/h ist für ein normales
+// Auto ohnehin unrealistisch, greift also praktisch nie bei echten Daten, nur bei Sensor-Ausfällen,
+// die selbst das breitere Median-Fenster nicht abfängt. Spiegelt PLAUSIBLE_MAX_CAR_KMH in js/app.js.
+private const val PLAUSIBLE_MAX_CAR_KMH = 260f
+
 /**
- * Gemeinsame Geschwindigkeits-Serie für eine Fahrt (median-gefiltert + hart gekappt), damit
+ * Gemeinsame Geschwindigkeits-Serie für eine Fahrt (median-gefiltert + gekappt), damit
  * Geschwindigkeits-Graph und Routen-Farbe/-Hover exakt dieselben Werte anzeigen. Spiegelt
  * getTripSpeedSeries() in js/app.js.
  */
 private fun speedSeriesClamped(trip: Trip, context: android.content.Context): List<GraphPoint> {
     val filtered = trip.toSpeedSeries(context).medianFiltered()
-    // Harte Sicherheitsgrenze: trip.maxSpeedKmh kommt vom GPS-Chip direkt (Doppler-basiert,
-    // robuster als unsere eigene Positions-Differenz-Rechnung) und ist die verlässliche Obergrenze
-    // der ganzen Fahrt. Ein GPS-Aussetzer über mehrere aufeinanderfolgende Punkte (nicht nur einen
-    // einzelnen) kann den 5-Punkte-Median-Filter durchschlagen und absurd hohe Einzelwerte erzeugen
-    // (z.B. "451 km/h" im Route-Hover/der Route-Farbe) - deshalb hier zusätzlich hart kappen.
-    val maxSpeed = trip.maxSpeedKmh.toFloat().coerceAtLeast(1f)
-    return filtered.map { if (it.speedKmh > maxSpeed) it.copy(speedKmh = maxSpeed) else it }
+    return filtered.map { if (it.speedKmh > PLAUSIBLE_MAX_CAR_KMH) it.copy(speedKmh = PLAUSIBLE_MAX_CAR_KMH) else it }
 }
 
 /** Rundet für eine lesbare Achsenbeschriftung auf ein "glattes" Vielfaches von 10 auf. */

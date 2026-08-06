@@ -5,6 +5,17 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.4.6] - 2026-08-06
+
+### Behoben
+- Der letzte Fix (0.4.5) kappte GPS-Ausreißer auf `trip.maxSpeedKmh` – bei mehreren aufeinander-
+  folgenden Ausreißer-Punkten (z. B. beim Einrasten des GPS-Fixes zu Fahrtbeginn) erzeugte das
+  einen verdächtig glatten Plateau exakt auf diesem Wert statt das Problem zu beheben, und
+  `trip.maxSpeedKmh` selbst kann durch dasselbe GPS-Problem verfälscht sein. Jetzt: Median-Filter
+  von 5 auf 9 Punkte verbreitert (hält deutlich mehr aufeinanderfolgende Ausreißer ab, verifiziert
+  per Test), Kappung nutzt eine fahrtunabhängige, für Autos generell unrealistische Grenze
+  (260 km/h) statt `trip.maxSpeedKmh`.
+
 ## [0.4.5] - 2026-08-06
 
 ### Behoben

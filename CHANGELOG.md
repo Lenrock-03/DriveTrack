@@ -5,6 +5,24 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.5.0] - 2026-08-06
+
+### Hinzugefügt
+- Fahrzeuge sind jetzt ein Untermenü: Antippen eines Autos in den Einstellungen öffnet eine
+  eigene Fahrzeug-Detailseite mit Name, **Foto** (neu – nur lokal auf dem Gerät gespeichert,
+  nicht Teil des Backups, geht bei Neuinstallation verloren), Bluetooth-Auto-Start, Standard-
+  Schalter und Löschen (inkl. Foto).
+- Import & Export (GPX-Import, GPX-Export, lokales Backup) ist jetzt ein eigenes Untermenü statt
+  drei einzelner Karten direkt in den Einstellungen.
+
+### Geändert
+- Einstellungen komplett neu gruppiert: Konto / Fahrzeuge / Daten / Über statt 7 gleichrangiger,
+  unsortierter Karten. Abschnitte haben jetzt Icons zur schnelleren Wiedererkennung. Karten-
+  Boilerplate in eine gemeinsame Komponente ausgelagert (vorher 7x kopiert).
+- "Fahrzeug hinzufügen"-Dialog nur noch einmal im Code (vorher fast identisch dupliziert
+  zwischen Einstellungen und dem Auto-Auswähler auf Home/Karte).
+- Room-Datenbank auf Version 6 (additive Migration, bestehende Daten bleiben erhalten).
+
 ## [0.4.6] - 2026-08-06
 
 ### Behoben

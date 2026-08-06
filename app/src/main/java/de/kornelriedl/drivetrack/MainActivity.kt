@@ -19,6 +19,7 @@ import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.UserPreferences
 import de.kornelriedl.drivetrack.data.UserProfile
 import de.kornelriedl.drivetrack.data.local.AppDatabase
+import de.kornelriedl.drivetrack.data.local.CarPhotoStore
 import de.kornelriedl.drivetrack.data.local.TrackFileStore
 import de.kornelriedl.drivetrack.data.server.ServerAuthPreferences
 import de.kornelriedl.drivetrack.data.server.ServerSession
@@ -28,7 +29,9 @@ import de.kornelriedl.drivetrack.export.BackupExporter
 import de.kornelriedl.drivetrack.export.GpxImporter
 import de.kornelriedl.drivetrack.ui.components.DriveTrackBottomBar
 import de.kornelriedl.drivetrack.ui.components.NavTab
+import de.kornelriedl.drivetrack.ui.screens.CarDetailScreen
 import de.kornelriedl.drivetrack.ui.screens.HomeScreen
+import de.kornelriedl.drivetrack.ui.screens.ImportExportScreen
 import de.kornelriedl.drivetrack.ui.screens.MapScreen
 import de.kornelriedl.drivetrack.ui.screens.RecordScreen
 import de.kornelriedl.drivetrack.ui.screens.ServerBackupScreen
@@ -151,8 +154,16 @@ fun DriveTrackApp(
         defaultCarId = id
         CarPreferences.setDefaultCarId(context, id)
     }
+    // Nur die Id merken, nicht das Car-Objekt: CarDetailScreen liest das aktuelle Car live aus
+    // dem cars-Flow, keine manuelle Nachpflege wie bei selectedTrip nötig. Bewusst NICHT
+    // "selectedCarId" nennen - der Name ist bereits für den globalen Home/Karte-Filter vergeben.
+    var editingCarId by remember { mutableStateOf<Long?>(null) }
     val onDeleteCar: (Car) -> Unit = { car ->
-        scope.launch { carDao.deleteCar(car) }
+        scope.launch {
+            carDao.deleteCar(car)
+            // Foto-Dateien mitlöschen, sonst bleiben sie für immer verwaist in filesDir liegen.
+            withContext(Dispatchers.IO) { CarPhotoStore.deleteAllFor(context, car.id) }
+        }
         if (selectedCarId == car.id) {
             selectedCarId = null
             CarPreferences.setSelectedCarId(context, null)
@@ -161,9 +172,36 @@ fun DriveTrackApp(
             defaultCarId = null
             CarPreferences.setDefaultCarId(context, null)
         }
+        editingCarId = null
     }
     val onSetCarBluetoothDevice: (Car, String?) -> Unit = { car, address ->
         scope.launch { carDao.updateCar(car.copy(bluetoothDeviceAddress = address)) }
+    }
+    val onRenameCar: (Car, String) -> Unit = { car, newName ->
+        scope.launch { carDao.updateCar(car.copy(name = newName)) }
+    }
+    val onSetCarPhoto: (Car, Uri) -> Unit = { car, uri ->
+        scope.launch {
+            val newFileName = withContext(Dispatchers.IO) {
+                CarPhotoStore.savePhotoFromUri(context, car.id, uri)
+            }
+            if (newFileName != null) {
+                val oldFileName = car.photoFileName
+                carDao.updateCar(car.copy(photoFileName = newFileName))
+                // Erst NACH dem erfolgreichen Schreiben die alte Datei entfernen.
+                if (oldFileName != null && oldFileName != newFileName) {
+                    withContext(Dispatchers.IO) { CarPhotoStore.delete(context, oldFileName) }
+                }
+            } else {
+                Toast.makeText(context, "Bild konnte nicht gelesen werden", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    val onRemoveCarPhoto: (Car) -> Unit = { car ->
+        scope.launch {
+            carDao.updateCar(car.copy(photoFileName = null))
+            car.photoFileName?.let { withContext(Dispatchers.IO) { CarPhotoStore.delete(context, it) } }
+        }
     }
 
     // Nach Auto gefilterte Fahrten für Home & Fahrten (null = "Alle Autos")
@@ -175,6 +213,7 @@ fun DriveTrackApp(
 
     var selectedTrip by remember { mutableStateOf<Trip?>(null) }
     var showServerBackup by remember { mutableStateOf(false) }
+    var showImportExport by remember { mutableStateOf(false) }
 
     // Zentrale Import-Funktion: von Share-Intent UND vom manuellen Button in den Einstellungen genutzt
     val importGpx: (Uri) -> Unit = { uri ->
@@ -220,15 +259,20 @@ fun DriveTrackApp(
     }
 
     // System-"Zurück"-Taste: im Detail-Screen zurück zur Liste statt App schließen
-    BackHandler(enabled = selectedTrip != null || showServerBackup) {
-        if (selectedTrip != null) selectedTrip = null else showServerBackup = false
+    BackHandler(enabled = selectedTrip != null || showServerBackup || editingCarId != null || showImportExport) {
+        when {
+            selectedTrip != null -> selectedTrip = null
+            editingCarId != null -> editingCarId = null
+            showImportExport -> showImportExport = false
+            else -> showServerBackup = false
+        }
     }
 
     // Zurück-Taste außerhalb dieser Screens: erst immer zu Home, App erst beim zweiten
     // Drücken (innerhalb von 2s) tatsächlich schließen
     val activity = context as? android.app.Activity
     var backPressedOnce by remember { mutableStateOf(false) }
-    BackHandler(enabled = selectedTrip == null && !showServerBackup) {
+    BackHandler(enabled = selectedTrip == null && !showServerBackup && editingCarId == null && !showImportExport) {
         when {
             currentTab != NavTab.HOME -> {
                 currentTab = NavTab.HOME
@@ -268,6 +312,36 @@ fun DriveTrackApp(
             trips = trips,
             onImportComplete = { /* Listen aktualisieren sich automatisch über die Flows */ },
             onBack = { showServerBackup = false }
+        )
+        return
+    }
+
+    val currentEditingCar = cars.find { it.id == editingCarId }
+    if (currentEditingCar != null) {
+        val carTrips = trips.filter { it.carId == currentEditingCar.id }
+        CarDetailScreen(
+            car = currentEditingCar,
+            isDefaultCar = currentEditingCar.id == defaultCarId,
+            tripCount = carTrips.size,
+            totalKm = carTrips.sumOf { it.distanceMeters } / 1000.0,
+            onRenameCar = { newName -> onRenameCar(currentEditingCar, newName) },
+            onSetPhoto = { uri -> onSetCarPhoto(currentEditingCar, uri) },
+            onRemovePhoto = { onRemoveCarPhoto(currentEditingCar) },
+            onSetBluetoothDevice = { address -> onSetCarBluetoothDevice(currentEditingCar, address) },
+            onSetDefault = { isDefault -> onSetDefaultCar(if (isDefault) currentEditingCar.id else null) },
+            onDeleteCar = { onDeleteCar(currentEditingCar) },
+            onBack = { editingCarId = null }
+        )
+        return
+    }
+
+    if (showImportExport) {
+        ImportExportScreen(
+            trips = trips,
+            onImportGpx = importGpx,
+            onExportBackup = onExportBackup,
+            onImportBackup = onImportBackup,
+            onBack = { showImportExport = false }
         )
         return
     }
@@ -362,22 +436,17 @@ fun DriveTrackApp(
                 modifier = Modifier.padding(padding)
             )
             NavTab.EINSTELLUNGEN -> SettingsScreen(
-                trips = trips,
-                onImportGpx = importGpx,
                 cars = cars,
                 onAddCar = onAddCar,
-                onDeleteCar = onDeleteCar,
                 defaultCarId = defaultCarId,
-                onSetDefaultCar = onSetDefaultCar,
-                onSetCarBluetoothDevice = onSetCarBluetoothDevice,
+                onOpenCar = { editingCarId = it.id },
                 users = users,
                 activeUserId = activeUserId,
                 onSelectUser = onSelectUser,
                 onAddUser = onAddUser,
                 onDeleteUser = onDeleteUser,
-                onExportBackup = onExportBackup,
-                onImportBackup = onImportBackup,
                 onOpenServerBackup = { showServerBackup = true },
+                onOpenImportExport = { showImportExport = true },
                 modifier = Modifier.padding(padding)
             )
         }

@@ -11,7 +11,7 @@ import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.UserProfile
 import java.io.File
 
-@Database(entities = [Trip::class, Car::class, UserProfile::class], version = 5, exportSchema = false)
+@Database(entities = [Trip::class, Car::class, UserProfile::class], version = 6, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
     abstract fun carDao(): CarDao
@@ -27,7 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "drivetrack.db"
                 )
-                    .addMigrations(migration3to4(context.applicationContext), migration4to5)
+                    .addMigrations(migration3to4(context.applicationContext), migration4to5, migration5to6)
                     // Kein echtes Migrations-Skript nötig für eine unveröffentlichte Dev-App –
                     // baut die lokale DB bei sonstigen Schemaänderungen einfach sauber neu auf.
                     // (Für den gpxTrackJson-Umzug oben aber bewusst NICHT destruktiv, um
@@ -98,6 +98,13 @@ abstract class AppDatabase : RoomDatabase() {
         private val migration4to5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE cars ADD COLUMN bluetoothDeviceAddress TEXT")
+            }
+        }
+
+        /** Neue, nullbare Spalte für das lokale Fahrzeug-Foto – bestehende Autos bleiben erhalten. */
+        private val migration5to6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cars ADD COLUMN photoFileName TEXT")
             }
         }
     }

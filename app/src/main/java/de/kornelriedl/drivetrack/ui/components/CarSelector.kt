@@ -25,7 +25,6 @@ fun CarSelector(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var addDialogOpen by remember { mutableStateOf(false) }
-    var newCarName by remember { mutableStateOf("") }
 
     val selectedCar = cars.find { it.id == selectedCarId }
 
@@ -87,36 +86,9 @@ fun CarSelector(
     }
 
     if (addDialogOpen) {
-        AlertDialog(
-            onDismissRequest = { addDialogOpen = false },
-            title = { Text("Neues Auto") },
-            text = {
-                OutlinedTextField(
-                    value = newCarName,
-                    onValueChange = { newCarName = it },
-                    singleLine = true,
-                    label = { Text("Name (z. B. Fiat Tipo)") }
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (newCarName.isNotBlank()) {
-                        onAddCar(newCarName.trim())
-                    }
-                    newCarName = ""
-                    addDialogOpen = false
-                }) {
-                    Text("Hinzufügen")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    newCarName = ""
-                    addDialogOpen = false
-                }) {
-                    Text("Abbrechen")
-                }
-            }
+        AddCarDialog(
+            onConfirm = onAddCar,
+            onDismiss = { addDialogOpen = false }
         )
     }
 }

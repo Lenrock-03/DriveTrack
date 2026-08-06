@@ -20,7 +20,11 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
 
 - **Einstiegspunkt**: `MainActivity.kt` – eine einzige Activity, kein Navigation-Component, Tab-Wechsel
   über simplen Compose-State (`NavTab`-Enum: HOME, FAHRTEN, AUFZEICHNEN, KARTE, EINSTELLUNGEN)
-- **Datenbank**: Room, drei Entities – `Trip`, `Car`, `UserProfile` (siehe `data/`, `data/local/`)
+- **Datenbank**: Room (aktuell Version 6), drei Entities – `Trip`, `Car`, `UserProfile`
+  (siehe `data/`, `data/local/`). Migrationen additiv (`ALTER TABLE ... ADD COLUMN`), NICHT
+  vergessen sie in `AppDatabase.addMigrations(...)` einzutragen – `fallbackToDestructiveMigration()`
+  ist aktiv, ein Versionsbump ohne registrierte Migration löscht sonst kommentarlos alle Daten
+  bestehender Installationen.
 - **GPS-Tracking**: `tracking/LocationTracker.kt` (Singleton, FusedLocationProviderClient), läuft auch
   als Foreground-Service (`tracking/TripTrackingService.kt`), damit GPS im Hintergrund nicht gedrosselt wird
 - **Karten**: osmdroid mit CartoDB-Dark-Matter-Kacheln (`ui/screens/MapScreen.kt` definiert die
@@ -36,6 +40,21 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   (`ROUTE_COLOR_PURPLE_KMH`, danach gekappt). Spiegelt sich 1:1 in der Web-App
   (`renderRouteLine()`/`speedToColor()` in `js/app.js`).
 - **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt`
+- **Einstellungen** (seit 0.5.0): `ui/screens/SettingsScreen.kt` ist nur noch der Einstiegspunkt
+  (Konto/Fahrzeuge/Daten/Über, ~200 Zeilen), mit gemeinsamer `SettingsSectionCard`/`SettingsNavCard`
+  (`ui/components/SettingsSectionCard.kt`) statt vorher 7x kopierter Card-Boilerplate. Fahrzeuge
+  und Import/Export sind eigene Untermenüs (kein Navigation-Component, gleiches `MainActivity`-
+  State-Muster wie `selectedTrip`/`showServerBackup`):
+  - `ui/screens/CarDetailScreen.kt` – Fahrzeug bearbeiten (Name, Bluetooth-Auto-Start via dem
+    hierher verschobenen `BluetoothDevicePickerDialog`, Standard-Schalter, Löschen) plus optional
+    ein **Foto** (`data/local/CarPhotoStore.kt`, spiegelt `TrackFileStore` – Datei statt DB-Blob).
+    Das Foto ist bewusst **nur lokal** (`filesDir/car_photos/`), NICHT Teil des Backups (weder
+    lokal noch Server) – vermeidet Binärdaten im JSON-Backup-Format, das sich alle drei Repos
+    teilen. Geht dadurch bei Neuinstallation/Wiederherstellung verloren (in der UI kommuniziert).
+  - `ui/screens/ImportExportScreen.kt` – GPX-Import, GPX-Export, lokales Gesamt-Backup (rein
+    organisatorisch aus `SettingsScreen.kt` ausgelagert, keine funktionale Änderung)
+  - `ui/components/AddCarDialog.kt` – ein gemeinsamer "Fahrzeug hinzufügen"-Dialog statt vorher
+    zweier fast identischer (Settings + `CarSelector.kt`)
 
 ## Server-Backup (Ende-zu-Ende-verschlüsselt)
 

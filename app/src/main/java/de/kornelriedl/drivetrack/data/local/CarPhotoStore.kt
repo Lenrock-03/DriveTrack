@@ -36,10 +36,15 @@ object CarPhotoStore {
             val resolver = context.contentResolver
 
             // 1. Nur die Abmessungen lesen, um den Downscale-Faktor zu bestimmen (verhindert OOM
-            //    bei sehr großen Fotos moderner Kameras).
+            //    bei sehr großen Fotos moderner Kameras). WICHTIG: BitmapFactory.decodeStream()
+            //    gibt bei inJustDecodeBounds=true IMMER null zurück (das ist so gewollt - man
+            //    liest danach options.outWidth/outHeight, nicht den Rückgabewert) - der Stream-
+            //    Open-Fehler muss deshalb VOR dem Decode-Aufruf separat geprüft werden, sonst
+            //    bricht die Funktion hier bei jedem echten Foto fälschlich sofort ab.
+            val boundsStream = resolver.openInputStream(uri) ?: return null
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                ?: return null
+            boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
             var sampleSize = 1
             while (bounds.outWidth / (sampleSize * 2) >= MAX_DIMENSION_PX &&

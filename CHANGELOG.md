@@ -5,6 +5,14 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.5.1] - 2026-08-06
+
+### Behoben
+- Fahrzeug-Foto ließ sich nicht hochladen: `BitmapFactory.decodeStream()` gibt beim reinen
+  Abmessungen-Lesen (`inJustDecodeBounds=true`) immer `null` zurück (so gewollt, man liest danach
+  `outWidth`/`outHeight`) – der Code hatte das fälschlich als Fehler behandelt und brach deshalb
+  bei jedem Foto sofort ab, bevor überhaupt dekodiert wurde.
+
 ## [0.5.0] - 2026-08-06
 
 ### Hinzugefügt

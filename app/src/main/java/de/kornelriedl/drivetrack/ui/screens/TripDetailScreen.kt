@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -157,6 +158,13 @@ fun TripDetailScreen(
                             .align(Alignment.TopEnd)
                             .padding(10.dp)
                     )
+                    if (routeColorMode == RouteColorMode.SPEED) {
+                        RouteColorLegend(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(10.dp)
+                        )
+                    }
                 }
             }
 
@@ -364,11 +372,16 @@ private fun applyRouteColorMode(
 // gezeichnet) - deshalb auf maximal so viele Segmente heruntersampeln.
 private const val MAX_ROUTE_COLOR_SEGMENTS = 1500
 
+// Feste, einheitliche Geschwindigkeits-Farbskala (bewusst NICHT relativ zur einzelnen Fahrt) -
+// dieselbe Farbe bedeutet dadurch bei jeder Fahrt dieselbe Geschwindigkeit, vergleichbar zwischen
+// z.B. einer Stadtfahrt und einer Autobahnfahrt. 150 km/h deckt normale Autobahn-Geschwindigkeiten
+// ab, alles darüber wird auf Vollrot gekappt. Spiegelt ROUTE_COLOR_SCALE_MAX_KMH in js/app.js.
+private const val ROUTE_COLOR_SCALE_MAX_KMH = 150f
+
 /** Baut die Route als mehrere kurze, nach Geschwindigkeit eingefärbte Segmente (grün -> rot). */
 private fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
     val series = trip.toSpeedSeries(context).medianFiltered()
     if (series.size < 2) return emptyList()
-    val scaleMax = niceCeilSpeed(trip.maxSpeedKmh.toFloat().coerceAtLeast(1f))
     val step = ((series.size - 1) / MAX_ROUTE_COLOR_SEGMENTS).coerceAtLeast(1)
 
     val segments = mutableListOf<Polyline>()
@@ -380,7 +393,7 @@ private fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: and
         segments.add(
             Polyline(mapView).apply {
                 setPoints(segmentPoints)
-                outlinePaint.color = speedToColor(avgSpeed, scaleMax)
+                outlinePaint.color = speedToColor(avgSpeed)
                 outlinePaint.strokeWidth = 10f
                 outlinePaint.isAntiAlias = true
                 setOnClickListener { _, _, _ -> true }
@@ -391,9 +404,9 @@ private fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: and
     return segments
 }
 
-/** Grün (langsam) -> Rot (schnell), analog zur Achse des Geschwindigkeits-Graphen. */
-private fun speedToColor(speedKmh: Float, scaleMax: Float): Int {
-    val fraction = (speedKmh / scaleMax).coerceIn(0f, 1f)
+/** Grün (langsam) -> Rot (schnell) auf der festen Skala bis ROUTE_COLOR_SCALE_MAX_KMH. */
+private fun speedToColor(speedKmh: Float): Int {
+    val fraction = (speedKmh / ROUTE_COLOR_SCALE_MAX_KMH).coerceIn(0f, 1f)
     val hue = 120f * (1f - fraction)
     return android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.85f, 0.85f))
 }
@@ -436,6 +449,36 @@ private fun RouteColorModeSelector(
                     { Icon(Icons.Filled.Check, contentDescription = null) }
                 } else null
             )
+        }
+    }
+}
+
+/** Erklärt die feste Geschwindigkeits-Farbskala, nur sichtbar solange RouteColorMode.SPEED aktiv ist. */
+@Composable
+private fun RouteColorLegend(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .width(150.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(0f, 37.5f, 75f, 112.5f, 150f).map { ComposeColor(speedToColor(it)) }
+                    )
+                )
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("75", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("150+ km/h", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

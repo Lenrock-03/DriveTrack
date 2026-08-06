@@ -30,6 +30,8 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   `speedToColor()`). Bei Geschwindigkeit wird die Route in kurze `Polyline`-Segmente zerlegt (max.
   `MAX_ROUTE_COLOR_SEGMENTS` = 1500, sonst würden viele tausend Overlays das Rendering bei langen
   Fahrten spürbar verlangsamen) – dieselbe median-gefilterte Geschwindigkeits-Serie wie `SpeedGraph()`.
+  Die Farbskala ist seit 0.4.1 **fest** (0–150 km/h, `ROUTE_COLOR_SCALE_MAX_KMH`), nicht relativ zur
+  einzelnen Fahrt – dazu eine Legende (`RouteColorLegend()`) unten links, solange der Modus aktiv ist.
   Spiegelt sich 1:1 in der Web-App (`renderRouteLine()`/`speedToColor()` in `js/app.js`).
 - **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt`
 

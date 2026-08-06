@@ -374,9 +374,12 @@ private const val MAX_ROUTE_COLOR_SEGMENTS = 1500
 
 // Feste, einheitliche Geschwindigkeits-Farbskala (bewusst NICHT relativ zur einzelnen Fahrt) -
 // dieselbe Farbe bedeutet dadurch bei jeder Fahrt dieselbe Geschwindigkeit, vergleichbar zwischen
-// z.B. einer Stadtfahrt und einer Autobahnfahrt. 150 km/h deckt normale Autobahn-Geschwindigkeiten
-// ab, alles darüber wird auf Vollrot gekappt. Spiegelt ROUTE_COLOR_SCALE_MAX_KMH in js/app.js.
-private const val ROUTE_COLOR_SCALE_MAX_KMH = 150f
+// z.B. einer Stadtfahrt und einer Autobahnfahrt. Zweistufig: 0-130 km/h grün->rot (130 = Richt-
+// geschwindigkeit Autobahn), 130-180 km/h zusätzlich rot->lila zur klaren Abhebung sehr hoher
+// Geschwindigkeiten. Alles über 180 km/h wird auf volles Lila gekappt. Spiegelt
+// ROUTE_COLOR_RED_KMH/ROUTE_COLOR_PURPLE_KMH in js/app.js.
+private const val ROUTE_COLOR_RED_KMH = 130f
+private const val ROUTE_COLOR_PURPLE_KMH = 180f
 
 /** Baut die Route als mehrere kurze, nach Geschwindigkeit eingefärbte Segmente (grün -> rot). */
 private fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
@@ -404,10 +407,15 @@ private fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: and
     return segments
 }
 
-/** Grün (langsam) -> Rot (schnell) auf der festen Skala bis ROUTE_COLOR_SCALE_MAX_KMH. */
+/** Grün (langsam) -> Rot (130 km/h) -> Lila (ab 180 km/h) auf der festen Skala. */
 private fun speedToColor(speedKmh: Float): Int {
-    val fraction = (speedKmh / ROUTE_COLOR_SCALE_MAX_KMH).coerceIn(0f, 1f)
-    val hue = 120f * (1f - fraction)
+    val hue = if (speedKmh <= ROUTE_COLOR_RED_KMH) {
+        val fraction = (speedKmh / ROUTE_COLOR_RED_KMH).coerceIn(0f, 1f)
+        120f * (1f - fraction) // 120 (grün) .. 0 (rot)
+    } else {
+        val fraction = ((speedKmh - ROUTE_COLOR_RED_KMH) / (ROUTE_COLOR_PURPLE_KMH - ROUTE_COLOR_RED_KMH)).coerceIn(0f, 1f)
+        360f - 75f * fraction // 360/0 (rot) .. 285 (lila), kurzer Weg (nicht zurück durch Gelb/Grün)
+    }
     return android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.85f, 0.85f))
 }
 
@@ -469,16 +477,17 @@ private fun RouteColorLegend(modifier: Modifier = Modifier) {
                 .height(8.dp)
                 .clip(RoundedCornerShape(4.dp))
                 .background(
+                    // Feine 10-km/h-Schritte, damit der Knick bei 130 (rot) glatt in den Verlauf übergeht
                     Brush.horizontalGradient(
-                        listOf(0f, 37.5f, 75f, 112.5f, 150f).map { ComposeColor(speedToColor(it)) }
+                        (0..ROUTE_COLOR_PURPLE_KMH.toInt() step 10).map { ComposeColor(speedToColor(it.toFloat())) }
                     )
                 )
         )
         Spacer(modifier = Modifier.height(4.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("75", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("150+ km/h", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("130", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("180+ km/h", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

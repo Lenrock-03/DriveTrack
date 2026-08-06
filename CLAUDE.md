@@ -51,6 +51,15 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
     Das Foto ist bewusst **nur lokal** (`filesDir/car_photos/`), NICHT Teil des Backups (weder
     lokal noch Server) – vermeidet Binärdaten im JSON-Backup-Format, das sich alle drei Repos
     teilen. Geht dadurch bei Neuinstallation/Wiederherstellung verloren (in der UI kommuniziert).
+    Bildausschnitt wählbar (seit 0.6.0) über `com.canhub.cropper` (`CropImageContract`,
+    16:9 fest) statt nur das Originalbild zu übernehmen – **View-basierte Lib, kein Compose**,
+    braucht zwingend ein `Theme.AppCompat`-Theme, das die App sonst nirgends hat (reines
+    Compose/Material3). Deshalb `CropperTheme` in `res/values/themes.xml` +
+    `<activity android:name="com.canhub.cropper.CropImageActivity" android:theme="@style/CropperTheme">`-
+    Override in `AndroidManifest.xml`, nur für diese eine fremde Activity – ohne das crasht der
+    Zuschneide-Dialog mit `IllegalStateException: You need to use a Theme.AppCompat theme`.
+    `CarPhotoStore.savePhotoFromUri()` bekommt danach die schon zugeschnittene Uri und
+    verkleinert/EXIF-normalisiert wie zuvor.
   - `ui/screens/ImportExportScreen.kt` – GPX-Import, GPX-Export, lokales Gesamt-Backup (rein
     organisatorisch aus `SettingsScreen.kt` ausgelagert, keine funktionale Änderung)
   - `ui/components/AddCarDialog.kt` – ein gemeinsamer "Fahrzeug hinzufügen"-Dialog statt vorher

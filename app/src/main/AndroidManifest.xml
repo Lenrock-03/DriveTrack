@@ -34,6 +34,13 @@
             android:name="androidx.car.app.minCarApiLevel"
             android:value="1" />
 
+        <!-- Bildausschnitt beim Fahrzeug-Foto: die Lib ist View-basiert und verlangt zwingend ein
+             Theme.AppCompat-Theme, das der Rest der App (reines Compose/Material3) sonst nirgends
+             braucht - deshalb Theme-Override nur für diese eine Activity (siehe themes.xml). -->
+        <activity
+            android:name="com.canhub.cropper.CropImageActivity"
+            android:theme="@style/CropperTheme" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

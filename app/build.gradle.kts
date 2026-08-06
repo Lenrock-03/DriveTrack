@@ -13,8 +13,8 @@ android {
         applicationId = "de.kornelriedl.drivetrack"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "0.5.1"
+        versionCode = 17
+        versionName = "0.6.0"
     }
 
     buildFeatures {
@@ -63,4 +63,14 @@ dependencies {
 
     // Verschlüsselte Speicherung des Server-Logins (Token etc.)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Bildausschnitt wählen beim Setzen eines Fahrzeug-Fotos (Zuschneiden/Zoomen/Schwenken) -
+    // eigene Implementierung wäre viel fehleranfällige Matrix-/Touch-Logik für etwas, das diese
+    // etablierte Lib schon robust löst.
+    implementation("com.github.CanHub:Android-Image-Cropper:4.5.0")
+    // Nur für CropImageActivity: die Lib ist View-basiert (nicht Compose) und verlangt zwingend
+    // ein Theme.AppCompat-Theme - diese App selbst ist reines Compose/Material3 ohne AppCompat,
+    // deshalb nur für diese eine fremde Activity per Manifest-Theme-Override eingebunden
+    // (siehe themes.xml "CropperTheme" + AndroidManifest.xml).
+    implementation("androidx.appcompat:appcompat:1.7.0")
 }

@@ -1,3 +1,8 @@
 <resources>
     <style name="Theme.DriveTrack" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Nur für com.canhub.cropper.CropImageActivity (siehe AndroidManifest.xml): die Lib ist
+         View-basiert und verlangt zwingend ein Theme.AppCompat-Theme, das der Rest der App (reines
+         Compose/Material3) sonst nirgends braucht. -->
+    <style name="CropperTheme" parent="Theme.AppCompat.Light.NoActionBar" />
 </resources>

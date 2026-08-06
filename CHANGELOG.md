@@ -5,6 +5,19 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.6.0] - 2026-08-06
+
+### Hinzugefügt
+- Beim Setzen eines Fahrzeug-Fotos lässt sich der Bildausschnitt jetzt wählen (zuschneiden/
+  zoomen/schwenken, festes Seitenverhältnis 16:9 passend zum Foto-Header) statt nur das ganze
+  Originalbild zu übernehmen. Neue Abhängigkeit `Android-Image-Cropper`.
+
+### Behoben
+- Die Cropper-Bibliothek ist View-basiert (nicht Compose) und verlangt zwingend ein
+  Theme.AppCompat-Theme – die App selbst ist reines Compose/Material3 ohne AppCompat und stürzte
+  beim Öffnen des Zuschneide-Dialogs deshalb ab. Theme-Override nur für diese eine Activity
+  ergänzt (`CropperTheme` in `themes.xml` + Manifest-Override), Rest der App unverändert.
+
 ## [0.5.1] - 2026-08-06
 
 ### Behoben

@@ -30,6 +30,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.canhub.cropper.CropImageContract
+import com.canhub.cropper.CropImageContractOptions
+import com.canhub.cropper.CropImageOptions
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.ui.components.CarPhoto
 import de.kornelriedl.drivetrack.ui.components.SettingsSectionCard
@@ -58,9 +61,26 @@ fun CarDetailScreen(
     var bluetoothDialogOpen by remember { mutableStateOf(false) }
     var deleteDialogOpen by remember { mutableStateOf(false) }
 
-    val photoLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri -> uri?.let { onSetPhoto(it) } }
+    // Bildausschnitt (Zuschneiden/Zoomen/Schwenken) statt einfach nur des ganzen Originalbilds -
+    // Seitenverhältnis fest auf 16:9, passend zum Foto-Header unten (WYSIWYG). uri=null lässt die
+    // Lib selbst zuerst einen Bild-Auswähler öffnen, bevor der Zuschneide-Dialog erscheint.
+    val cropLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
+        if (result.isSuccessful) {
+            result.uriContent?.let { onSetPhoto(it) }
+        }
+    }
+    val launchPhotoPicker = {
+        cropLauncher.launch(
+            CropImageContractOptions(
+                uri = null,
+                cropImageOptions = CropImageOptions(
+                    aspectRatioX = 16,
+                    aspectRatioY = 9,
+                    fixAspectRatio = true
+                )
+            )
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -89,14 +109,14 @@ fun CarDetailScreen(
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
                     .clip(RoundedCornerShape(16.dp))
-                    .clickable { photoLauncher.launch("image/*") }
+                    .clickable { launchPhotoPicker() }
             ) {
                 CarPhoto(photoFileName = car.photoFileName, modifier = Modifier.fillMaxSize())
             }
             Spacer(modifier = Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
-                    onClick = { photoLauncher.launch("image/*") },
+                    onClick = { launchPhotoPicker() },
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(

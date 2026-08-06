@@ -383,7 +383,7 @@ private const val ROUTE_COLOR_PURPLE_KMH = 180f
 
 /** Baut die Route als mehrere kurze, nach Geschwindigkeit eingefärbte Segmente (grün -> rot). */
 private fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
-    val series = trip.toSpeedSeries(context).medianFiltered()
+    val series = speedSeriesClamped(trip, context)
     if (series.size < 2) return emptyList()
     val step = ((series.size - 1) / MAX_ROUTE_COLOR_SEGMENTS).coerceAtLeast(1)
 
@@ -618,7 +618,7 @@ private fun SpeedGraph(
     // Median-Filter gegen einzelne GPS-Ausreißer (kurzer ungenauer Fix -> rechnerisch absurd hohe
     // Distanz/Zeit-Geschwindigkeit) - siehe medianFiltered(). Ohne den Filter sehen solche
     // Ausreißer wie künstliche Nadel-Spitzen statt eines realistischen Geschwindigkeitsverlaufs aus.
-    val points = remember(trip.id) { trip.toSpeedSeries(context).medianFiltered() }
+    val points = remember(trip.id) { speedSeriesClamped(trip, context) }
 
     if (points.size < 2) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
@@ -765,6 +765,22 @@ private fun List<GraphPoint>.medianFiltered(windowRadius: Int = 2): List<GraphPo
         val window = raw.subList(lo, hi + 1).sorted()
         p.copy(speedKmh = window[window.size / 2])
     }
+}
+
+/**
+ * Gemeinsame Geschwindigkeits-Serie für eine Fahrt (median-gefiltert + hart gekappt), damit
+ * Geschwindigkeits-Graph und Routen-Farbe/-Hover exakt dieselben Werte anzeigen. Spiegelt
+ * getTripSpeedSeries() in js/app.js.
+ */
+private fun speedSeriesClamped(trip: Trip, context: android.content.Context): List<GraphPoint> {
+    val filtered = trip.toSpeedSeries(context).medianFiltered()
+    // Harte Sicherheitsgrenze: trip.maxSpeedKmh kommt vom GPS-Chip direkt (Doppler-basiert,
+    // robuster als unsere eigene Positions-Differenz-Rechnung) und ist die verlässliche Obergrenze
+    // der ganzen Fahrt. Ein GPS-Aussetzer über mehrere aufeinanderfolgende Punkte (nicht nur einen
+    // einzelnen) kann den 5-Punkte-Median-Filter durchschlagen und absurd hohe Einzelwerte erzeugen
+    // (z.B. "451 km/h" im Route-Hover/der Route-Farbe) - deshalb hier zusätzlich hart kappen.
+    val maxSpeed = trip.maxSpeedKmh.toFloat().coerceAtLeast(1f)
+    return filtered.map { if (it.speedKmh > maxSpeed) it.copy(speedKmh = maxSpeed) else it }
 }
 
 /** Rundet für eine lesbare Achsenbeschriftung auf ein "glattes" Vielfaches von 10 auf. */

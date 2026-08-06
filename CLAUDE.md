@@ -25,6 +25,12 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   als Foreground-Service (`tracking/TripTrackingService.kt`), damit GPS im Hintergrund nicht gedrosselt wird
 - **Karten**: osmdroid mit CartoDB-Dark-Matter-Kacheln (`ui/screens/MapScreen.kt` definiert die
   Tile-Source + einen Kontrast-Filter, `buildContrastFilter()`, gemeinsam genutzt von allen Karten-Screens)
+- **Routen-Farbmodus** (`ui/screens/TripDetailScreen.kt`, seit 0.4.0): Umschalter oben rechts auf der
+  Fahrt-Detail-Karte zwischen einheitlicher Farbe und Einfärbung nach Geschwindigkeit (grün→rot,
+  `speedToColor()`). Bei Geschwindigkeit wird die Route in kurze `Polyline`-Segmente zerlegt (max.
+  `MAX_ROUTE_COLOR_SEGMENTS` = 1500, sonst würden viele tausend Overlays das Rendering bei langen
+  Fahrten spürbar verlangsamen) – dieselbe median-gefilterte Geschwindigkeits-Serie wie `SpeedGraph()`.
+  Spiegelt sich 1:1 in der Web-App (`renderRouteLine()`/`speedToColor()` in `js/app.js`).
 - **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt`
 
 ## Server-Backup (Ende-zu-Ende-verschlüsselt)

@@ -5,6 +5,14 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.4.0] - 2026-08-06
+
+### Hinzugefügt
+- Routen-Linie in der Fahrt-Detail-Karte kann jetzt nach Geschwindigkeit eingefärbt werden
+  (grün = langsam, rot = schnell) statt der einheitlichen orangenen Farbe – Umschalter oben rechts
+  auf der Karte. Bei sehr langen Fahrten werden die Segmente auf max. 1500 heruntergesampelt, damit
+  das Kartenrendering flüssig bleibt.
+
 ## [0.3.0] - 2026-08-05
 
 ### Hinzugefügt

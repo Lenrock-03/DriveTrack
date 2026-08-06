@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Route
@@ -131,6 +133,7 @@ fun TripDetailScreen(
 
             // Routenkarte: füllt den kompletten restlichen Platz bis zum Stats/Graph-Bereich
             var scrubPoint by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+            var routeColorMode by remember { mutableStateOf(RouteColorMode.STANDARD) }
 
             Card(
                 shape = RoundedCornerShape(20.dp),
@@ -140,7 +143,21 @@ fun TripDetailScreen(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                RouteDetailMap(trip = trip, scrubPoint = scrubPoint, modifier = Modifier.fillMaxSize())
+                Box(modifier = Modifier.fillMaxSize()) {
+                    RouteDetailMap(
+                        trip = trip,
+                        scrubPoint = scrubPoint,
+                        routeColorMode = routeColorMode,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    RouteColorModeSelector(
+                        selected = routeColorMode,
+                        onSelect = { routeColorMode = it },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(10.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -209,14 +226,22 @@ fun TripDetailScreen(
     }
 }
 
+/** Anzeigemodus der Routen-Linie auf der Detail-Karte, umschaltbar über RouteColorModeSelector. */
+private enum class RouteColorMode { STANDARD, SPEED }
+
 @Composable
 private fun RouteDetailMap(
     trip: Trip,
     scrubPoint: Pair<Double, Double>?,
+    routeColorMode: RouteColorMode,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val scrubMarkerRef = remember { mutableStateOf<Marker?>(null) }
+    // Aktuell gezeichnete Routen-Layer (Standard-Linie oder Geschwindigkeits-Segmente), damit sie
+    // sich beim Umschalten des Modus gezielt entfernen lassen, ohne Start-/Ziel-/Scrub-Marker anzufassen.
+    val routeOverlaysRef = remember { mutableStateOf<List<Polyline>>(emptyList()) }
+    val appliedModeRef = remember { mutableStateOf<RouteColorMode?>(null) }
 
     AndroidView(
         modifier = modifier,
@@ -233,15 +258,8 @@ private fun RouteDetailMap(
                 val points = trip.toGeoPoints(ctx)
 
                 if (points.size >= 2) {
-                    val polyline = Polyline(this).apply {
-                        setPoints(points)
-                        outlinePaint.color = AndroidColor.parseColor("#FF7A1A")
-                        outlinePaint.strokeWidth = 10f
-                        outlinePaint.isAntiAlias = true
-                        // Verhindert die weiße Standard-Bubble beim Antippen der Route
-                        setOnClickListener { _, _, _ -> true }
-                    }
-                    overlays.add(polyline)
+                    applyRouteColorMode(this, trip, ctx, points, routeColorMode, routeOverlaysRef)
+                    appliedModeRef.value = routeColorMode
 
                     val startMarker = Marker(this).apply {
                         position = points.first()
@@ -281,18 +299,145 @@ private fun RouteDetailMap(
             }
         },
         update = { mapView ->
-            val marker = scrubMarkerRef.value ?: return@AndroidView
-            if (scrubPoint != null) {
-                marker.position = org.osmdroid.util.GeoPoint(scrubPoint.first, scrubPoint.second)
-                if (!mapView.overlays.contains(marker)) {
-                    mapView.overlays.add(marker)
+            val marker = scrubMarkerRef.value
+            if (marker != null) {
+                if (scrubPoint != null) {
+                    marker.position = org.osmdroid.util.GeoPoint(scrubPoint.first, scrubPoint.second)
+                    if (!mapView.overlays.contains(marker)) {
+                        mapView.overlays.add(marker)
+                    }
+                } else {
+                    mapView.overlays.remove(marker)
                 }
-            } else {
-                mapView.overlays.remove(marker)
             }
+
+            // Route nur neu einfärben, wenn sich der Modus seit dem letzten Durchlauf geändert hat
+            // (nicht bei jedem Scrub-Update während des Ziehens im Graphen).
+            if (appliedModeRef.value != routeColorMode) {
+                val points = trip.toGeoPoints(context)
+                if (points.size >= 2) {
+                    applyRouteColorMode(mapView, trip, context, points, routeColorMode, routeOverlaysRef)
+                }
+                appliedModeRef.value = routeColorMode
+            }
+
             mapView.invalidate()
         }
     )
+}
+
+/**
+ * Entfernt die zuvor gezeichnete(n) Routen-Linie(n) und zeichnet sie im gewählten Modus neu
+ * (Standard-Farbe oder nach Geschwindigkeit eingefärbt). Wird an Index 0 eingefügt, damit sie
+ * immer unter Start-/Ziel-/Scrub-Marker liegt, egal in welcher Reihenfolge das passiert.
+ */
+private fun applyRouteColorMode(
+    mapView: MapView,
+    trip: Trip,
+    context: android.content.Context,
+    points: List<org.osmdroid.util.GeoPoint>,
+    mode: RouteColorMode,
+    routeOverlaysRef: MutableState<List<Polyline>>
+) {
+    routeOverlaysRef.value.forEach { mapView.overlays.remove(it) }
+
+    val newOverlays = when (mode) {
+        RouteColorMode.STANDARD -> listOf(
+            Polyline(mapView).apply {
+                setPoints(points)
+                outlinePaint.color = AndroidColor.parseColor("#FF7A1A")
+                outlinePaint.strokeWidth = 10f
+                outlinePaint.isAntiAlias = true
+                // Verhindert die weiße Standard-Bubble beim Antippen der Route
+                setOnClickListener { _, _, _ -> true }
+            }
+        )
+        RouteColorMode.SPEED -> buildSpeedColoredSegments(mapView, trip, context)
+    }
+
+    mapView.overlays.addAll(0, newOverlays)
+    routeOverlaysRef.value = newOverlays
+}
+
+// Bei sehr langen Fahrten (viele tausend GPS-Punkte) würde ein Overlay pro Segment das
+// Kartenrendering spürbar verlangsamen (jedes Polyline-Overlay wird bei jedem Pan/Zoom neu
+// gezeichnet) - deshalb auf maximal so viele Segmente heruntersampeln.
+private const val MAX_ROUTE_COLOR_SEGMENTS = 1500
+
+/** Baut die Route als mehrere kurze, nach Geschwindigkeit eingefärbte Segmente (grün -> rot). */
+private fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
+    val series = trip.toSpeedSeries(context).medianFiltered()
+    if (series.size < 2) return emptyList()
+    val scaleMax = niceCeilSpeed(trip.maxSpeedKmh.toFloat().coerceAtLeast(1f))
+    val step = ((series.size - 1) / MAX_ROUTE_COLOR_SEGMENTS).coerceAtLeast(1)
+
+    val segments = mutableListOf<Polyline>()
+    var i = 0
+    while (i < series.size - 1) {
+        val end = (i + step).coerceAtMost(series.size - 1)
+        val segmentPoints = (i..end).map { org.osmdroid.util.GeoPoint(series[it].lat, series[it].lon) }
+        val avgSpeed = (i..end).map { series[it].speedKmh }.average().toFloat()
+        segments.add(
+            Polyline(mapView).apply {
+                setPoints(segmentPoints)
+                outlinePaint.color = speedToColor(avgSpeed, scaleMax)
+                outlinePaint.strokeWidth = 10f
+                outlinePaint.isAntiAlias = true
+                setOnClickListener { _, _, _ -> true }
+            }
+        )
+        i = end
+    }
+    return segments
+}
+
+/** Grün (langsam) -> Rot (schnell), analog zur Achse des Geschwindigkeits-Graphen. */
+private fun speedToColor(speedKmh: Float, scaleMax: Float): Int {
+    val fraction = (speedKmh / scaleMax).coerceIn(0f, 1f)
+    val hue = 120f * (1f - fraction)
+    return android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.85f, 0.85f))
+}
+
+@Composable
+private fun RouteColorModeSelector(
+    selected: RouteColorMode,
+    onSelect: (RouteColorMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                .clickable { expanded = true }
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (selected == RouteColorMode.STANDARD) "Standard" else "Geschwindigkeit",
+                style = MaterialTheme.typography.labelSmall
+            )
+            Spacer(modifier = Modifier.width(2.dp))
+            Icon(Icons.Filled.ArrowDropDown, contentDescription = "Routen-Farbe wählen", modifier = Modifier.size(18.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Standard (orange)") },
+                onClick = { onSelect(RouteColorMode.STANDARD); expanded = false },
+                leadingIcon = if (selected == RouteColorMode.STANDARD) {
+                    { Icon(Icons.Filled.Check, contentDescription = null) }
+                } else null
+            )
+            DropdownMenuItem(
+                text = { Text("Nach Geschwindigkeit") },
+                onClick = { onSelect(RouteColorMode.SPEED); expanded = false },
+                leadingIcon = if (selected == RouteColorMode.SPEED) {
+                    { Icon(Icons.Filled.Check, contentDescription = null) }
+                } else null
+            )
+        }
+    }
 }
 
 /**

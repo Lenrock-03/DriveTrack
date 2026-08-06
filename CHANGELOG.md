@@ -5,6 +5,14 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.7.0] - 2026-08-06
+
+### Hinzugefügt
+- Fahrzeug-Detailseite zeigt jetzt Statistik-Kacheln wie das Home-Dashboard (Gesamt-km, Fahrten,
+  Fahrzeit, Ø Geschwindigkeit), zusätzlich **Höchstgeschwindigkeit** – jeweils nur über die
+  Fahrten dieses Fahrzeugs. `StatCard`/`formatDurationHm` aus `HomeScreen.kt` in eine gemeinsame
+  Komponente (`ui/components/StatCard.kt`) ausgelagert, damit beide Screens dieselbe Kachel nutzen.
+
 ## [0.6.0] - 2026-08-06
 
 ### Hinzugefügt

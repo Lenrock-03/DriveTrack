@@ -20,8 +20,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TripOrigin
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +41,8 @@ import com.canhub.cropper.CropImageOptions
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.ui.components.CarPhoto
 import de.kornelriedl.drivetrack.ui.components.SettingsSectionCard
+import de.kornelriedl.drivetrack.ui.components.StatCard
+import de.kornelriedl.drivetrack.ui.components.formatDurationHm
 
 /**
  * Fahrzeug-Detailseite: Name, Foto (nur lokal gespeichert, siehe CarPhotoStore), Bluetooth-
@@ -50,6 +57,9 @@ fun CarDetailScreen(
     isDefaultCar: Boolean,
     tripCount: Int,
     totalKm: Double,
+    totalDurationMinutes: Long,
+    avgSpeedKmh: Double,
+    maxSpeedKmh: Double,
     onRenameCar: (String) -> Unit,
     onSetPhoto: (Uri) -> Unit,
     onRemovePhoto: () -> Unit,
@@ -208,14 +218,63 @@ fun CarDetailScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Statistik
+            // Statistik - spiegelt das Home-Dashboard (StatCard), plus Höchstgeschwindigkeit
             Text(
-                text = "$tripCount Fahrt${if (tripCount == 1) "" else "en"} · %.1f km".format(totalKm),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "Statistik",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                StatCard(
+                    icon = Icons.Filled.TripOrigin,
+                    value = "%.0f km".format(totalKm),
+                    label = "Gesamt",
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    icon = Icons.Filled.Route,
+                    value = tripCount.toString(),
+                    label = "Fahrten",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                StatCard(
+                    icon = Icons.Filled.Timer,
+                    value = formatDurationHm(totalDurationMinutes),
+                    label = "Fahrzeit",
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    icon = Icons.Filled.Speed,
+                    value = "%.0f km/h".format(avgSpeedKmh),
+                    label = "Ø Speed",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                StatCard(
+                    icon = Icons.Filled.Bolt,
+                    value = "%.0f km/h".format(maxSpeedKmh),
+                    label = "Höchstgeschwindigkeit",
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.weight(1f))
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 

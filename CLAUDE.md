@@ -59,7 +59,9 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
     Override in `AndroidManifest.xml`, nur für diese eine fremde Activity – ohne das crasht der
     Zuschneide-Dialog mit `IllegalStateException: You need to use a Theme.AppCompat theme`.
     `CarPhotoStore.savePhotoFromUri()` bekommt danach die schon zugeschnittene Uri und
-    verkleinert/EXIF-normalisiert wie zuvor.
+    verkleinert/EXIF-normalisiert wie zuvor. Seit 0.7.0 außerdem Statistik-Kacheln (Gesamt-km,
+    Fahrten, Fahrzeit, Ø Speed, Höchstgeschwindigkeit) nur über die Fahrten dieses Fahrzeugs -
+    nutzt die aus `HomeScreen.kt` ausgelagerte `ui/components/StatCard.kt`.
   - `ui/screens/ImportExportScreen.kt` – GPX-Import, GPX-Export, lokales Gesamt-Backup (rein
     organisatorisch aus `SettingsScreen.kt` ausgelagert, keine funktionale Änderung)
   - `ui/components/AddCarDialog.kt` – ein gemeinsamer "Fahrzeug hinzufügen"-Dialog statt vorher

@@ -5,6 +5,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.4.3] - 2026-08-06
+
+### Behoben
+- Legende der Geschwindigkeits-Farbskala: der "130"-Tick saß per Row/SpaceBetween in der Mitte des
+  Balkens, obwohl 130 tatsächlich bei 130/180 ≈ 72 % des Gradienten liegt – Farbe an der Tick-
+  Position stimmte dadurch nicht mit dem Label überein. Jetzt an der echten Position platziert.
+
 ## [0.4.2] - 2026-08-06
 
 ### Geändert

@@ -484,10 +484,21 @@ private fun RouteColorLegend(modifier: Modifier = Modifier) {
                 )
         )
         Spacer(modifier = Modifier.height(4.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("130", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("180+ km/h", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // Absolut statt Row/SpaceBetween: der "130"-Tick muss an der tatsächlichen Position seines
+        // Werts im Gradienten sitzen (130/180 ≈ 72% der Breite, NICHT in der Mitte).
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(14.dp)) {
+            val labelStyle = MaterialTheme.typography.labelSmall
+            val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            Text("0", style = labelStyle, color = labelColor, modifier = Modifier.align(Alignment.CenterStart))
+            Text(
+                "130",
+                style = labelStyle,
+                color = labelColor,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset(x = maxWidth * (ROUTE_COLOR_RED_KMH / ROUTE_COLOR_PURPLE_KMH))
+            )
+            Text("180+ km/h", style = labelStyle, color = labelColor, modifier = Modifier.align(Alignment.CenterEnd))
         }
     }
 }

@@ -466,7 +466,7 @@ private fun RouteColorModeSelector(
 private fun RouteColorLegend(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
-            .width(150.dp)
+            .width(175.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
             .padding(horizontal = 10.dp, vertical = 8.dp)
@@ -498,7 +498,7 @@ private fun RouteColorLegend(modifier: Modifier = Modifier) {
                     .align(Alignment.CenterStart)
                     .offset(x = maxWidth * (ROUTE_COLOR_RED_KMH / ROUTE_COLOR_PURPLE_KMH))
             )
-            Text("180+ km/h", style = labelStyle, color = labelColor, modifier = Modifier.align(Alignment.CenterEnd))
+            Text("180+", style = labelStyle, color = labelColor, modifier = Modifier.align(Alignment.CenterEnd))
         }
     }
 }

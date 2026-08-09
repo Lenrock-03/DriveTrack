@@ -20,6 +20,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import de.kornelriedl.drivetrack.R
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.labelColor
 import de.kornelriedl.drivetrack.data.segmentMarks
 import de.kornelriedl.drivetrack.data.speedSeriesClamped
 import de.kornelriedl.drivetrack.ui.screens.DarkMatterTileSource
@@ -43,10 +44,6 @@ import androidx.compose.ui.graphics.Color as ComposeColor
 
 /** Anzeigemodus der Routen-Linie auf der Detail-Karte, umschaltbar über RouteColorModeSelector. */
 enum class RouteColorMode { STANDARD, SPEED }
-
-// Feste Signalfarbe für markierte Streckenabschnitte (z.B. Fährüberfahrt) - unabhängig vom
-// Standard-/Geschwindigkeits-Modus immer gleich erkennbar, gestrichelt statt durchgezogen.
-private val SEGMENT_MARK_COLOR = AndroidColor.parseColor("#26C6DA")
 
 @Composable
 fun RouteDetailMap(
@@ -228,7 +225,11 @@ private fun applyRouteColorMode(
     routeOverlaysRef.value = newOverlays
 }
 
-/** Baut je markiertem Streckenabschnitt (z.B. Fähre) eine gestrichelte Signalfarben-Polyline. */
+/**
+ * Baut je markiertem Streckenabschnitt (z.B. Fähre) eine gestrichelte Polyline in einer je nach
+ * Markierungs-Typ festen Signalfarbe (labelColor() - Fähre blau, damit sie sofort erkennbar von
+ * einer "normalen" Fahrstrecke abweicht).
+ */
 private fun buildSegmentMarkOverlays(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
     val marks = trip.segmentMarks()
     if (marks.isEmpty()) return emptyList()
@@ -240,7 +241,7 @@ private fun buildSegmentMarkOverlays(mapView: MapView, trip: Trip, context: andr
         if (inRange.size < 2) return@mapNotNull null
         Polyline(mapView).apply {
             setPoints(inRange.map { GeoPoint(it.first, it.second) })
-            outlinePaint.color = SEGMENT_MARK_COLOR
+            outlinePaint.color = labelColor(mark.label)
             outlinePaint.strokeWidth = 12f
             outlinePaint.isAntiAlias = true
             outlinePaint.pathEffect = DashPathEffect(floatArrayOf(20f, 14f), 0f)

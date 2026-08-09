@@ -64,10 +64,16 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   - **Markieren** (nicht-destruktiv, sofort gespeichert): Fahrt-Labels (`Trip.labels`, kommagetrennt,
     Presets wie "⛴ Fähre" + Freitext) als Badges in `TripListItem`/`TripDetailScreen`, und
     Streckenabschnitts-Markierungen (`Trip.segmentMarksJson`, `SegmentMark(label, startTs, endTs)`)
-    als gestrichelte Signalfarben-Linie auf der Karte (`RouteDetailMap`). Ein markierter Abschnitt
-    bleibt Teil von Distanz/Dauer/Ø-Geschwindigkeit, wird aber automatisch aus `maxSpeedKmh`
-    ausgeschlossen (`recomputeMaxSpeedExcludingMarks()`) – Grundmotivation: eine kurze Autofähre
-    soll die Höchstgeschwindigkeits-Statistik nicht verfälschen.
+    als gestrichelte Linie auf der Karte (`RouteDetailMap`) in einer je Typ festen Farbe
+    (`data/TripGeoMath.kt::labelColor()` – Fähre blau, Pause bernstein, Nacht indigo, sonst türkis;
+    dieselbe Farbe auch als Punkt in der Markierungs-Liste). Ein markierter Abschnitt bleibt Teil von
+    Distanz/Dauer/Ø-Geschwindigkeit der GESAMTEN Fahrt, wird aber automatisch aus deren `maxSpeedKmh`
+    ausgeschlossen (`recomputeMaxSpeedExcludingMarks()`) – Grundmotivation: eine kurze Autofähre soll
+    die Höchstgeschwindigkeits-Statistik der Fahrt nicht verfälschen. Seit 0.9.0 zusätzlich **eigene**
+    Statistik je Abschnitt (`Trip.segmentStats()` – Distanz/Dauer/Ø-/Höchstgeschwindigkeit nur
+    innerhalb des markierten Zeitraums), angezeigt über die gemeinsame Komponente
+    `ui/components/SegmentMarkRow.kt` (genutzt von `TripDetailScreen` read-only und `TripEditScreen`
+    mit Lösch-Button).
   - "Fahrzeit"-Kacheln auf Home-Dashboard/`CarDetailScreen` nutzen seit 0.8.0
     `Trip.drivingDurationMinutes` statt der reinen Gesamtdauer (für Fahrten ohne Pause-Schnitt
     identisches Ergebnis wie vorher).

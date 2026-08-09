@@ -5,6 +5,19 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.9.0] - 2026-08-09
+
+### Hinzugefügt
+- Markierte Streckenabschnitte (⛴ Fähre, ☕ Pause, 🌙 Nachtfahrt, eigene Labels) bekommen jetzt eine
+  **eigene, feste Signalfarbe** je Typ (Fähre z. B. blau) statt einer einzelnen Türkis-Farbe für
+  alle – Linie auf der Karte und der Farbpunkt in der Markierungs-Liste nutzen dieselbe Farbe.
+- Jeder markierte Abschnitt zeigt jetzt **eigene Statistiken** (Distanz, Dauer, Ø- und
+  Höchstgeschwindigkeit nur für diesen Abschnitt) – sichtbar sowohl in der Fahrt-Detailseite
+  (neuer Abschnitt "Markierte Abschnitte" unter der Statistik) als auch im Bearbeiten-Screen.
+  Neue gemeinsame Komponente `ui/components/SegmentMarkRow.kt`. Die Gesamt-Fahrt-Statistik
+  (Distanz/Dauer/Ø-Geschwindigkeit) bleibt davon unberührt – nur die Höchstgeschwindigkeit der
+  gesamten Fahrt schließt markierte Abschnitte weiterhin aus (seit 0.8.0).
+
 ## [0.8.0] - 2026-08-09
 
 ### Hinzugefügt

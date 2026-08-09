@@ -27,6 +27,7 @@ import de.kornelriedl.drivetrack.data.labelList
 import de.kornelriedl.drivetrack.data.segmentMarks
 import de.kornelriedl.drivetrack.ui.components.RouteColorMode
 import de.kornelriedl.drivetrack.ui.components.RouteDetailMap
+import de.kornelriedl.drivetrack.ui.components.SegmentMarkRow
 import de.kornelriedl.drivetrack.ui.components.SpeedGraph
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -272,24 +273,12 @@ fun TripEditScreen(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 existingMarks.forEach { mark ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "${labelIcon(mark.label)} ${mark.label}: ${fmt(mark.startTs)}–${fmt(mark.endTs)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(onClick = { onDeleteSegmentMark(mark) }, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Filled.Close, contentDescription = "Löschen", modifier = Modifier.size(16.dp))
-                        }
-                    }
+                    SegmentMarkRow(
+                        trip = trip,
+                        mark = mark,
+                        onDelete = { onDeleteSegmentMark(mark) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Spacer(modifier = Modifier.height(6.dp))
                 }
             }

@@ -157,6 +157,54 @@ fun labelIcon(label: String): String {
     }
 }
 
+/**
+ * Feste Signalfarbe je Markierungs-Typ (Keyword-Mapping wie labelIcon()), als ARGB-Int - für die
+ * gestrichelte Routen-Linie auf der Karte UND als kleiner Farbpunkt in den Markierungs-Listen
+ * (TripDetailScreen/TripEditScreen), damit beides erkennbar zusammengehört. Fähre bewusst blau
+ * (assoziiert mit Wasser), sonst je Keyword unterschiedlich, damit mehrere Markierungstypen auf
+ * derselben Fahrt optisch unterscheidbar bleiben.
+ */
+fun labelColor(label: String): Int {
+    val lower = label.lowercase()
+    return when {
+        "fähre" in lower || "faehre" in lower -> android.graphics.Color.parseColor("#2979FF") // Blau
+        "pause" in lower -> android.graphics.Color.parseColor("#FFB300") // Bernstein
+        "nacht" in lower -> android.graphics.Color.parseColor("#7C4DFF") // Indigo
+        else -> android.graphics.Color.parseColor("#26C6DA") // Türkis (Default)
+    }
+}
+
+/** Distanz/Dauer/Geschwindigkeit nur innerhalb eines markierten Streckenabschnitts (z.B. Fähre). */
+data class SegmentStats(
+    val distanceKm: Double,
+    val durationMinutes: Long,
+    val avgSpeedKmh: Double,
+    val maxSpeedKmh: Double
+)
+
+/**
+ * Berechnet Distanz/Dauer/Ø-/Höchstgeschwindigkeit nur für die Punkte innerhalb eines markierten
+ * Abschnitts - unabhängig von den Gesamt-Fahrt-Werten, die diesen Abschnitt weiterhin mit einschließen
+ * (siehe applyTripEditPlan-Kommentar: nur maxSpeedKmh der GESAMTEN Fahrt schließt Markierungen aus,
+ * die Fahrt selbst bleibt unverändert). Dauer kommt bewusst aus mark.startTs/endTs (nicht aus den
+ * Punkten), damit sie auch bei nur 0-1 GPS-Punkten im Bereich sinnvoll bleibt.
+ */
+fun Trip.segmentStats(context: Context, mark: SegmentMark): SegmentStats {
+    val durationMinutes = ((mark.endTs - mark.startTs) / 60000).coerceAtLeast(0)
+    val inRange = toTrackPoints(context).filter { it.third in mark.startTs..mark.endTs }
+    if (inRange.size < 2) return SegmentStats(0.0, durationMinutes, 0.0, 0.0)
+
+    var distanceMeters = 0.0
+    var maxSpeed = 0.0
+    for (i in 1 until inRange.size) {
+        distanceMeters += haversineMetersPoints(inRange[i - 1], inRange[i])
+        val speed = segmentSpeedKmh(inRange[i - 1], inRange[i]).coerceAtMost(PLAUSIBLE_MAX_CAR_KMH.toDouble())
+        if (speed > maxSpeed) maxSpeed = speed
+    }
+    val avgSpeedKmh = if (durationMinutes > 0) (distanceMeters / 1000.0) / (durationMinutes / 60.0) else 0.0
+    return SegmentStats(distanceMeters / 1000.0, durationMinutes, avgSpeedKmh, maxSpeed)
+}
+
 /** Ein aus der Fahrzeit herauszuschneidender Bereich (z.B. eine Pause). */
 data class PauseCut(val startTs: Long, val endTs: Long)
 

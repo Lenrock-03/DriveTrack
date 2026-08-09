@@ -31,11 +31,13 @@ import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.labelIcon
 import de.kornelriedl.drivetrack.data.labelList
+import de.kornelriedl.drivetrack.data.segmentMarks
 import de.kornelriedl.drivetrack.export.GpxExporter
 import de.kornelriedl.drivetrack.ui.components.RouteColorLegend
 import de.kornelriedl.drivetrack.ui.components.RouteColorMode
 import de.kornelriedl.drivetrack.ui.components.RouteColorModeSelector
 import de.kornelriedl.drivetrack.ui.components.RouteDetailMap
+import de.kornelriedl.drivetrack.ui.components.SegmentMarkRow
 import de.kornelriedl.drivetrack.ui.components.SpeedGraph
 import de.kornelriedl.drivetrack.ui.components.formatDurationHm
 import java.text.SimpleDateFormat
@@ -182,6 +184,21 @@ fun TripDetailScreen(
                 onScrub = { scrubPoint = it },
                 modifier = Modifier.fillMaxWidth()
             )
+
+            val marks = trip.segmentMarks()
+            if (marks.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "Markierte Abschnitte",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                marks.forEach { mark ->
+                    SegmentMarkRow(trip = trip, mark = mark, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
         }

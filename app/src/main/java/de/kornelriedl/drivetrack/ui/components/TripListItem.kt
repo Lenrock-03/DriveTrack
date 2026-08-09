@@ -26,6 +26,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.labelIcon
+import de.kornelriedl.drivetrack.data.labelList
 import de.kornelriedl.drivetrack.export.MapThumbnailGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -82,6 +84,20 @@ fun TripListItem(trip: Trip, onClick: () -> Unit, onLongClick: () -> Unit = {}) 
                         text = "Ø %.0f km/h".format(trip.avgSpeedKmh),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                val labels = trip.labelList()
+                if (labels.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    // Max. 2 sichtbar + "+N"-Kürzel, damit das feste Zwei-Zeilen-Layout der Karte
+                    // bei vielen Labels nicht ausufert.
+                    val visible = labels.take(2)
+                    val overflow = labels.size - visible.size
+                    Text(
+                        text = visible.joinToString("  ") { "${labelIcon(it)} $it" } +
+                            if (overflow > 0) "  +$overflow" else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }

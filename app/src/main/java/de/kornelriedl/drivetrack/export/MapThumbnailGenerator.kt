@@ -59,6 +59,15 @@ object MapThumbnailGenerator {
         return bitmap
     }
 
+    /**
+     * Löscht ein gecachtes Thumbnail, z.B. nach einem destruktiven Fahrt-Schnitt (TripEditScreen) -
+     * die gespeicherte Route hat sich geändert, das nächste getOrCreate() muss sie neu rendern statt
+     * das alte (jetzt veraltete) PNG weiterzuverwenden.
+     */
+    fun invalidate(context: Context, tripId: Long) {
+        File(cacheDir(context), "trip_$tripId.png").delete()
+    }
+
     private fun cacheDir(context: Context): File =
         File(context.cacheDir, "trip_thumbnails").apply { mkdirs() }
 

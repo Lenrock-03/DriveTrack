@@ -13,7 +13,18 @@ data class Trip(
     val distanceMeters: Double,
     val avgSpeedKmh: Double,
     val maxSpeedKmh: Double,
-    val carId: Long? = null            // welches Auto gefahren wurde (optional)
+    val carId: Long? = null,           // welches Auto gefahren wurde (optional)
+    // Kommagetrennte Freitext-Tags (z.B. "Fähre,Pause gemacht"), siehe Trip.labelList()/
+    // List<String>.toLabelsString() in TripGeoMath.kt. Kommas in Einzeleinträgen werden dort entfernt.
+    val labels: String? = null,
+    // Summe der über TripEditScreen aus der Fahrzeit herausgeschnittenen Pausen-Minuten, akkumuliert
+    // über mehrere Bearbeitungs-Sessions. durationMinutes (Gesamtdauer) bleibt davon unberührt -
+    // drivingDurationMinutes (Fahrzeit) unten zieht sie ab.
+    val pausedMinutes: Long = 0,
+    // Kleines JSON-Array markierter Streckenabschnitte (z.B. Fährüberfahrt), siehe
+    // Trip.segmentMarks()/SegmentMark in TripGeoMath.kt. Bewusst normale TEXT-Spalte (nicht wie
+    // gpxTrackJson als Datei) - nur wenige kurze Einträge pro Fahrt, kein CursorWindow-Risiko.
+    val segmentMarksJson: String = "[]"
 ) {
     // GPS-Punkte (lat,lon,timestamp) als JSON-Array – bewusst KEINE Room-Spalte (daher außerhalb
     // des Konstruktors, @Ignore): einzelne Fahrten (z.B. ganztägig, viele tausend Punkte) sprengen
@@ -26,6 +37,10 @@ data class Trip(
 
     val durationMinutes: Long
         get() = (endTimestamp - startTimestamp) / 60000
+
+    /** "Fahrzeit": Gesamtdauer minus über TripEditScreen herausgeschnittene Pausen. */
+    val drivingDurationMinutes: Long
+        get() = (durationMinutes - pausedMinutes).coerceAtLeast(0)
 
     val distanceKm: Double
         get() = distanceMeters / 1000.0

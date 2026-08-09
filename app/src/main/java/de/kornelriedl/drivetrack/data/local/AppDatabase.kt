@@ -11,7 +11,7 @@ import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.UserProfile
 import java.io.File
 
-@Database(entities = [Trip::class, Car::class, UserProfile::class], version = 6, exportSchema = false)
+@Database(entities = [Trip::class, Car::class, UserProfile::class], version = 7, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
     abstract fun carDao(): CarDao
@@ -27,7 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "drivetrack.db"
                 )
-                    .addMigrations(migration3to4(context.applicationContext), migration4to5, migration5to6)
+                    .addMigrations(migration3to4(context.applicationContext), migration4to5, migration5to6, migration6to7)
                     // Kein echtes Migrations-Skript nötig für eine unveröffentlichte Dev-App –
                     // baut die lokale DB bei sonstigen Schemaänderungen einfach sauber neu auf.
                     // (Für den gpxTrackJson-Umzug oben aber bewusst NICHT destruktiv, um
@@ -105,6 +105,18 @@ abstract class AppDatabase : RoomDatabase() {
         private val migration5to6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE cars ADD COLUMN photoFileName TEXT")
+            }
+        }
+
+        /**
+         * Neue Spalten fürs Zuschneiden/Markieren von Fahrten (TripEditScreen) – bestehende Fahrten
+         * bleiben erhalten, Defaults entsprechen "noch nie bearbeitet/markiert".
+         */
+        private val migration6to7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE trips ADD COLUMN labels TEXT")
+                db.execSQL("ALTER TABLE trips ADD COLUMN pausedMinutes INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE trips ADD COLUMN segmentMarksJson TEXT NOT NULL DEFAULT '[]'")
             }
         }
     }

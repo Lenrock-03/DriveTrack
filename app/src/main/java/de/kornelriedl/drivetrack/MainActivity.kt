@@ -15,18 +15,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.CarPreferences
+import de.kornelriedl.drivetrack.data.SegmentMark
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.TripEditPlan
 import de.kornelriedl.drivetrack.data.UserPreferences
 import de.kornelriedl.drivetrack.data.UserProfile
+import de.kornelriedl.drivetrack.data.applyTripEditPlan
 import de.kornelriedl.drivetrack.data.local.AppDatabase
 import de.kornelriedl.drivetrack.data.local.CarPhotoStore
 import de.kornelriedl.drivetrack.data.local.TrackFileStore
+import de.kornelriedl.drivetrack.data.recomputeMaxSpeedExcludingMarks
+import de.kornelriedl.drivetrack.data.segmentMarks
 import de.kornelriedl.drivetrack.data.server.ServerAuthPreferences
 import de.kornelriedl.drivetrack.data.server.ServerSession
 import de.kornelriedl.drivetrack.data.server.ServerSync
+import de.kornelriedl.drivetrack.data.toJson
+import de.kornelriedl.drivetrack.data.toLabelsString
 import de.kornelriedl.drivetrack.data.toTrip
 import de.kornelriedl.drivetrack.export.BackupExporter
 import de.kornelriedl.drivetrack.export.GpxImporter
+import de.kornelriedl.drivetrack.export.MapThumbnailGenerator
 import de.kornelriedl.drivetrack.ui.components.DriveTrackBottomBar
 import de.kornelriedl.drivetrack.ui.components.NavTab
 import de.kornelriedl.drivetrack.ui.screens.CarDetailScreen
@@ -37,6 +45,7 @@ import de.kornelriedl.drivetrack.ui.screens.RecordScreen
 import de.kornelriedl.drivetrack.ui.screens.ServerBackupScreen
 import de.kornelriedl.drivetrack.ui.screens.SettingsScreen
 import de.kornelriedl.drivetrack.ui.screens.TripDetailScreen
+import de.kornelriedl.drivetrack.ui.screens.TripEditScreen
 import de.kornelriedl.drivetrack.ui.theme.DriveTrackTheme
 import de.kornelriedl.drivetrack.tracking.LocationTracker
 import kotlinx.coroutines.Dispatchers
@@ -208,12 +217,50 @@ fun DriveTrackApp(
     val filteredTrips = if (selectedCarId != null) trips.filter { it.carId == selectedCarId } else trips
     val filteredTotalKm = filteredTrips.sumOf { it.distanceMeters } / 1000.0
     val filteredTripCount = filteredTrips.size
-    val filteredTotalDurationMinutes = filteredTrips.sumOf { it.durationMinutes }
+    // "Fahrzeit" = Gesamtdauer minus über TripEditScreen herausgeschnittene Pausen (siehe
+    // Trip.drivingDurationMinutes) - für unbearbeitete Fahrten (pausedMinutes == 0) identisch zu
+    // vorher, keine sichtbare Änderung.
+    val filteredTotalDurationMinutes = filteredTrips.sumOf { it.drivingDurationMinutes }
     val filteredAvgSpeedKmh = if (filteredTrips.isNotEmpty()) filteredTrips.map { it.avgSpeedKmh }.average() else 0.0
 
     var selectedTrip by remember { mutableStateOf<Trip?>(null) }
     var showServerBackup by remember { mutableStateOf(false) }
     var showImportExport by remember { mutableStateOf(false) }
+    // Nur die Id merken, nicht das Trip-Objekt - TripEditScreen liest die aktuelle Fahrt live aus
+    // dem trips-Flow (Muster identisch zu editingCarId oben).
+    var editingTripId by remember { mutableStateOf<Long?>(null) }
+    val onApplyTripEdit: (Trip, TripEditPlan) -> Unit = { trip, plan ->
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) { applyTripEditPlan(trip, context, plan) }
+            if (outcome != null) {
+                tripDao.updateTrip(outcome.trip)
+                withContext(Dispatchers.IO) {
+                    TrackFileStore.write(context, outcome.trip.id, outcome.newTrackJson)
+                    MapThumbnailGenerator.invalidate(context, outcome.trip.id)
+                }
+            } else {
+                Toast.makeText(context, "Änderung ungültig (zu wenige Punkte übrig)", Toast.LENGTH_SHORT).show()
+            }
+            editingTripId = null
+        }
+    }
+    val onUpdateTripLabels: (Trip, List<String>) -> Unit = { trip, labels ->
+        scope.launch { tripDao.updateTrip(trip.copy(labels = labels.toLabelsString())) }
+    }
+    val onAddTripSegmentMark: (Trip, SegmentMark) -> Unit = { trip, mark ->
+        scope.launch {
+            val updated = trip.segmentMarks() + mark
+            val newMax = withContext(Dispatchers.IO) { recomputeMaxSpeedExcludingMarks(trip, context, updated) }
+            tripDao.updateTrip(trip.copy(segmentMarksJson = updated.toJson(), maxSpeedKmh = newMax))
+        }
+    }
+    val onDeleteTripSegmentMark: (Trip, SegmentMark) -> Unit = { trip, mark ->
+        scope.launch {
+            val updated = trip.segmentMarks() - mark
+            val newMax = withContext(Dispatchers.IO) { recomputeMaxSpeedExcludingMarks(trip, context, updated) }
+            tripDao.updateTrip(trip.copy(segmentMarksJson = updated.toJson(), maxSpeedKmh = newMax))
+        }
+    }
 
     // Zentrale Import-Funktion: von Share-Intent UND vom manuellen Button in den Einstellungen genutzt
     val importGpx: (Uri) -> Unit = { uri ->
@@ -259,8 +306,11 @@ fun DriveTrackApp(
     }
 
     // System-"Zurück"-Taste: im Detail-Screen zurück zur Liste statt App schließen
-    BackHandler(enabled = selectedTrip != null || showServerBackup || editingCarId != null || showImportExport) {
+    BackHandler(
+        enabled = selectedTrip != null || showServerBackup || editingCarId != null || showImportExport || editingTripId != null
+    ) {
         when {
+            editingTripId != null -> editingTripId = null
             selectedTrip != null -> selectedTrip = null
             editingCarId != null -> editingCarId = null
             showImportExport -> showImportExport = false
@@ -272,7 +322,9 @@ fun DriveTrackApp(
     // Drücken (innerhalb von 2s) tatsächlich schließen
     val activity = context as? android.app.Activity
     var backPressedOnce by remember { mutableStateOf(false) }
-    BackHandler(enabled = selectedTrip == null && !showServerBackup && editingCarId == null && !showImportExport) {
+    BackHandler(
+        enabled = selectedTrip == null && !showServerBackup && editingCarId == null && !showImportExport && editingTripId == null
+    ) {
         when {
             currentTab != NavTab.HOME -> {
                 currentTab = NavTab.HOME
@@ -291,6 +343,21 @@ fun DriveTrackApp(
         }
     }
 
+    // Vor dem selectedTrip-Block geprüft: liegt "über" der Detailseite (die bleibt währenddessen
+    // gesetzt) und springt beim Anwenden/Zurück wieder dorthin zurück, nicht bis auf Home.
+    val currentEditingTrip = trips.find { it.id == editingTripId }
+    if (currentEditingTrip != null) {
+        TripEditScreen(
+            trip = currentEditingTrip,
+            onBack = { editingTripId = null },
+            onApplyEdit = { plan -> onApplyTripEdit(currentEditingTrip, plan) },
+            onUpdateLabels = { labels -> onUpdateTripLabels(currentEditingTrip, labels) },
+            onAddSegmentMark = { mark -> onAddTripSegmentMark(currentEditingTrip, mark) },
+            onDeleteSegmentMark = { mark -> onDeleteTripSegmentMark(currentEditingTrip, mark) }
+        )
+        return
+    }
+
     val currentSelectedTrip = selectedTrip
     if (currentSelectedTrip != null) {
         TripDetailScreen(
@@ -300,6 +367,7 @@ fun DriveTrackApp(
                 scope.launch { tripDao.updateTrip(trip.copy(carId = newCarId)) }
                 selectedTrip = trip.copy(carId = newCarId)
             },
+            onEdit = { editingTripId = currentSelectedTrip.id },
             onBack = { selectedTrip = null }
         )
         return
@@ -324,7 +392,7 @@ fun DriveTrackApp(
             isDefaultCar = currentEditingCar.id == defaultCarId,
             tripCount = carTrips.size,
             totalKm = carTrips.sumOf { it.distanceMeters } / 1000.0,
-            totalDurationMinutes = carTrips.sumOf { it.durationMinutes },
+            totalDurationMinutes = carTrips.sumOf { it.drivingDurationMinutes },
             avgSpeedKmh = if (carTrips.isNotEmpty()) carTrips.map { it.avgSpeedKmh }.average() else 0.0,
             maxSpeedKmh = carTrips.maxOfOrNull { it.maxSpeedKmh } ?: 0.0,
             onRenameCar = { newName -> onRenameCar(currentEditingCar, newName) },

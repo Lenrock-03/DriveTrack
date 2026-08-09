@@ -1,12 +1,9 @@
 package de.kornelriedl.drivetrack.ui.screens
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -14,9 +11,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Speed
@@ -27,39 +23,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import de.kornelriedl.drivetrack.R
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.labelIcon
+import de.kornelriedl.drivetrack.data.labelList
 import de.kornelriedl.drivetrack.export.GpxExporter
-import org.osmdroid.util.BoundingBox
-import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Polyline
+import de.kornelriedl.drivetrack.ui.components.RouteColorLegend
+import de.kornelriedl.drivetrack.ui.components.RouteColorMode
+import de.kornelriedl.drivetrack.ui.components.RouteColorModeSelector
+import de.kornelriedl.drivetrack.ui.components.RouteDetailMap
+import de.kornelriedl.drivetrack.ui.components.SpeedGraph
+import de.kornelriedl.drivetrack.ui.components.formatDurationHm
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.roundToInt
-import android.graphics.Color as AndroidColor
-import androidx.compose.ui.graphics.Color as ComposeColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +48,7 @@ fun TripDetailScreen(
     trip: Trip,
     cars: List<Car>,
     onChangeCar: (Trip, Long?) -> Unit,
+    onEdit: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -82,6 +64,9 @@ fun TripDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Fahrt bearbeiten")
+                    }
                     IconButton(onClick = { GpxExporter.shareTrip(context, trip) }) {
                         Icon(Icons.Filled.IosShare, contentDescription = "Als GPX exportieren")
                     }
@@ -108,6 +93,27 @@ fun TripDetailScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            val labels = trip.labelList()
+            if (labels.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    labels.forEach { label ->
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                "${labelIcon(label)} $label",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -234,275 +240,6 @@ fun TripDetailScreen(
     }
 }
 
-/** Anzeigemodus der Routen-Linie auf der Detail-Karte, umschaltbar über RouteColorModeSelector. */
-private enum class RouteColorMode { STANDARD, SPEED }
-
-@Composable
-private fun RouteDetailMap(
-    trip: Trip,
-    scrubPoint: Pair<Double, Double>?,
-    routeColorMode: RouteColorMode,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    val scrubMarkerRef = remember { mutableStateOf<Marker?>(null) }
-    // Aktuell gezeichnete Routen-Layer (Standard-Linie oder Geschwindigkeits-Segmente), damit sie
-    // sich beim Umschalten des Modus gezielt entfernen lassen, ohne Start-/Ziel-/Scrub-Marker anzufassen.
-    val routeOverlaysRef = remember { mutableStateOf<List<Polyline>>(emptyList()) }
-    val appliedModeRef = remember { mutableStateOf<RouteColorMode?>(null) }
-
-    AndroidView(
-        modifier = modifier,
-        factory = { ctx ->
-            MapView(ctx).apply {
-                setTileSource(DarkMatterTileSource)
-                overlayManager.tilesOverlay.setColorFilter(buildContrastFilter())
-                setMultiTouchControls(true)
-                isTilesScaledToDpi = true
-                zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
-                minZoomLevel = 4.0
-                maxZoomLevel = 20.0
-
-                val points = trip.toGeoPoints(ctx)
-
-                if (points.size >= 2) {
-                    applyRouteColorMode(this, trip, ctx, points, routeColorMode, routeOverlaysRef)
-                    appliedModeRef.value = routeColorMode
-
-                    val startMarker = Marker(this).apply {
-                        position = points.first()
-                        icon = ContextCompat.getDrawable(ctx, R.drawable.ic_start_marker)
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        setOnMarkerClickListener { _, _ -> true }
-                    }
-                    overlays.add(startMarker)
-
-                    val endMarker = Marker(this).apply {
-                        position = points.last()
-                        icon = ContextCompat.getDrawable(ctx, R.drawable.ic_finish_flag)
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        setOnMarkerClickListener { _, _ -> true }
-                    }
-                    overlays.add(endMarker)
-
-                    // Scrub-Marker: zeigt die Position, die im Geschwindigkeits-Graph gerade
-                    // ausgewählt ist. Wird erst über update() sichtbar, sobald eine Auswahl existiert.
-                    val scrubMarker = Marker(this).apply {
-                        icon = ContextCompat.getDrawable(ctx, R.drawable.ic_location_dot)
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                        setOnMarkerClickListener { _, _ -> true }
-                    }
-                    scrubMarkerRef.value = scrubMarker
-
-                    post {
-                        val boundingBox = BoundingBox.fromGeoPoints(points)
-                        zoomToBoundingBox(boundingBox, false, 100)
-                    }
-                } else {
-                    controller.setZoom(15.0)
-                    controller.setCenter(org.osmdroid.util.GeoPoint(47.8, 11.7))
-                }
-
-                overlays.add(DoubleTapDragZoomOverlay(ctx))
-            }
-        },
-        update = { mapView ->
-            val marker = scrubMarkerRef.value
-            if (marker != null) {
-                if (scrubPoint != null) {
-                    marker.position = org.osmdroid.util.GeoPoint(scrubPoint.first, scrubPoint.second)
-                    if (!mapView.overlays.contains(marker)) {
-                        mapView.overlays.add(marker)
-                    }
-                } else {
-                    mapView.overlays.remove(marker)
-                }
-            }
-
-            // Route nur neu einfärben, wenn sich der Modus seit dem letzten Durchlauf geändert hat
-            // (nicht bei jedem Scrub-Update während des Ziehens im Graphen).
-            if (appliedModeRef.value != routeColorMode) {
-                val points = trip.toGeoPoints(context)
-                if (points.size >= 2) {
-                    applyRouteColorMode(mapView, trip, context, points, routeColorMode, routeOverlaysRef)
-                }
-                appliedModeRef.value = routeColorMode
-            }
-
-            mapView.invalidate()
-        }
-    )
-}
-
-/**
- * Entfernt die zuvor gezeichnete(n) Routen-Linie(n) und zeichnet sie im gewählten Modus neu
- * (Standard-Farbe oder nach Geschwindigkeit eingefärbt). Wird an Index 0 eingefügt, damit sie
- * immer unter Start-/Ziel-/Scrub-Marker liegt, egal in welcher Reihenfolge das passiert.
- */
-private fun applyRouteColorMode(
-    mapView: MapView,
-    trip: Trip,
-    context: android.content.Context,
-    points: List<org.osmdroid.util.GeoPoint>,
-    mode: RouteColorMode,
-    routeOverlaysRef: MutableState<List<Polyline>>
-) {
-    routeOverlaysRef.value.forEach { mapView.overlays.remove(it) }
-
-    val newOverlays = when (mode) {
-        RouteColorMode.STANDARD -> listOf(
-            Polyline(mapView).apply {
-                setPoints(points)
-                outlinePaint.color = AndroidColor.parseColor("#FF7A1A")
-                outlinePaint.strokeWidth = 10f
-                outlinePaint.isAntiAlias = true
-                // Verhindert die weiße Standard-Bubble beim Antippen der Route
-                setOnClickListener { _, _, _ -> true }
-            }
-        )
-        RouteColorMode.SPEED -> buildSpeedColoredSegments(mapView, trip, context)
-    }
-
-    mapView.overlays.addAll(0, newOverlays)
-    routeOverlaysRef.value = newOverlays
-}
-
-// Bei sehr langen Fahrten (viele tausend GPS-Punkte) würde ein Overlay pro Segment das
-// Kartenrendering spürbar verlangsamen (jedes Polyline-Overlay wird bei jedem Pan/Zoom neu
-// gezeichnet) - deshalb auf maximal so viele Segmente heruntersampeln.
-private const val MAX_ROUTE_COLOR_SEGMENTS = 1500
-
-// Feste, einheitliche Geschwindigkeits-Farbskala (bewusst NICHT relativ zur einzelnen Fahrt) -
-// dieselbe Farbe bedeutet dadurch bei jeder Fahrt dieselbe Geschwindigkeit, vergleichbar zwischen
-// z.B. einer Stadtfahrt und einer Autobahnfahrt. Zweistufig: 0-130 km/h grün->rot (130 = Richt-
-// geschwindigkeit Autobahn), 130-180 km/h zusätzlich rot->lila zur klaren Abhebung sehr hoher
-// Geschwindigkeiten. Alles über 180 km/h wird auf volles Lila gekappt. Spiegelt
-// ROUTE_COLOR_RED_KMH/ROUTE_COLOR_PURPLE_KMH in js/app.js.
-private const val ROUTE_COLOR_RED_KMH = 130f
-private const val ROUTE_COLOR_PURPLE_KMH = 180f
-
-/** Baut die Route als mehrere kurze, nach Geschwindigkeit eingefärbte Segmente (grün -> rot). */
-private fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
-    val series = speedSeriesClamped(trip, context)
-    if (series.size < 2) return emptyList()
-    val step = ((series.size - 1) / MAX_ROUTE_COLOR_SEGMENTS).coerceAtLeast(1)
-
-    val segments = mutableListOf<Polyline>()
-    var i = 0
-    while (i < series.size - 1) {
-        val end = (i + step).coerceAtMost(series.size - 1)
-        val segmentPoints = (i..end).map { org.osmdroid.util.GeoPoint(series[it].lat, series[it].lon) }
-        val avgSpeed = (i..end).map { series[it].speedKmh }.average().toFloat()
-        segments.add(
-            Polyline(mapView).apply {
-                setPoints(segmentPoints)
-                outlinePaint.color = speedToColor(avgSpeed)
-                outlinePaint.strokeWidth = 10f
-                outlinePaint.isAntiAlias = true
-                setOnClickListener { _, _, _ -> true }
-            }
-        )
-        i = end
-    }
-    return segments
-}
-
-/** Grün (langsam) -> Rot (130 km/h) -> Lila (ab 180 km/h) auf der festen Skala. */
-private fun speedToColor(speedKmh: Float): Int {
-    val hue = if (speedKmh <= ROUTE_COLOR_RED_KMH) {
-        val fraction = (speedKmh / ROUTE_COLOR_RED_KMH).coerceIn(0f, 1f)
-        120f * (1f - fraction) // 120 (grün) .. 0 (rot)
-    } else {
-        val fraction = ((speedKmh - ROUTE_COLOR_RED_KMH) / (ROUTE_COLOR_PURPLE_KMH - ROUTE_COLOR_RED_KMH)).coerceIn(0f, 1f)
-        360f - 75f * fraction // 360/0 (rot) .. 285 (lila), kurzer Weg (nicht zurück durch Gelb/Grün)
-    }
-    return android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.85f, 0.85f))
-}
-
-@Composable
-private fun RouteColorModeSelector(
-    selected: RouteColorMode,
-    onSelect: (RouteColorMode) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
-                .clickable { expanded = true }
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (selected == RouteColorMode.STANDARD) "Standard" else "Geschwindigkeit",
-                style = MaterialTheme.typography.labelSmall
-            )
-            Spacer(modifier = Modifier.width(2.dp))
-            Icon(Icons.Filled.ArrowDropDown, contentDescription = "Routen-Farbe wählen", modifier = Modifier.size(18.dp))
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DropdownMenuItem(
-                text = { Text("Standard (orange)") },
-                onClick = { onSelect(RouteColorMode.STANDARD); expanded = false },
-                leadingIcon = if (selected == RouteColorMode.STANDARD) {
-                    { Icon(Icons.Filled.Check, contentDescription = null) }
-                } else null
-            )
-            DropdownMenuItem(
-                text = { Text("Nach Geschwindigkeit") },
-                onClick = { onSelect(RouteColorMode.SPEED); expanded = false },
-                leadingIcon = if (selected == RouteColorMode.SPEED) {
-                    { Icon(Icons.Filled.Check, contentDescription = null) }
-                } else null
-            )
-        }
-    }
-}
-
-/** Erklärt die feste Geschwindigkeits-Farbskala, nur sichtbar solange RouteColorMode.SPEED aktiv ist. */
-@Composable
-private fun RouteColorLegend(modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .width(175.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
-            .padding(horizontal = 10.dp, vertical = 8.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(
-                    // Feine 10-km/h-Schritte, damit der Knick bei 130 (rot) glatt in den Verlauf übergeht
-                    Brush.horizontalGradient(
-                        (0..ROUTE_COLOR_PURPLE_KMH.toInt() step 10).map { ComposeColor(speedToColor(it.toFloat())) }
-                    )
-                )
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        // Absolut statt Row/SpaceBetween: der "130"-Tick muss an der tatsächlichen Position seines
-        // Werts im Gradienten sitzen (130/180 ≈ 72% der Breite, NICHT in der Mitte).
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(14.dp)) {
-            val labelStyle = MaterialTheme.typography.labelSmall
-            val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-            Text("0", style = labelStyle, color = labelColor, modifier = Modifier.align(Alignment.CenterStart))
-            Text(
-                "130",
-                style = labelStyle,
-                color = labelColor,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .offset(x = maxWidth * (ROUTE_COLOR_RED_KMH / ROUTE_COLOR_PURPLE_KMH))
-            )
-            Text("180+", style = labelStyle, color = labelColor, modifier = Modifier.align(Alignment.CenterEnd))
-        }
-    }
-}
-
 /**
  * Wischbarer Bereich unter der Karte: Seite 1 klassische Stat-Kacheln,
  * Seite 2 ein Geschwindigkeits-Graph mit verschiebbarem Punkt (Uhrzeit/km-Stand/Speed).
@@ -530,7 +267,11 @@ private fun TripStatsPager(
         ) { page ->
             when (page) {
                 0 -> StatsGrid(trip = trip, modifier = Modifier.fillMaxSize())
-                else -> SpeedGraph(trip = trip, onScrub = onScrub, modifier = Modifier.fillMaxSize())
+                else -> SpeedGraph(
+                    trip = trip,
+                    onScrub = { point -> onScrub(point?.let { it.lat to it.lon }) },
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
 
@@ -595,249 +336,16 @@ private fun StatsGrid(trip: Trip, modifier: Modifier = Modifier) {
                 modifier = Modifier.weight(1f)
             )
         }
-    }
-}
-
-/** Ein Punkt im Geschwindigkeits-Graphen. */
-private data class GraphPoint(
-    val offsetSeconds: Float,
-    val speedKmh: Float,
-    val cumulativeKm: Float,
-    val timestamp: Long,
-    val lat: Double,
-    val lon: Double
-)
-
-@Composable
-private fun SpeedGraph(
-    trip: Trip,
-    onScrub: (Pair<Double, Double>?) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    // Median-Filter gegen einzelne GPS-Ausreißer (kurzer ungenauer Fix -> rechnerisch absurd hohe
-    // Distanz/Zeit-Geschwindigkeit) - siehe medianFiltered(). Ohne den Filter sehen solche
-    // Ausreißer wie künstliche Nadel-Spitzen statt eines realistischen Geschwindigkeitsverlaufs aus.
-    val points = remember(trip.id) { speedSeriesClamped(trip, context) }
-
-    if (points.size < 2) {
-        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        if (trip.pausedMinutes > 0) {
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Keine Geschwindigkeitsdaten vorhanden.",
-                style = MaterialTheme.typography.bodyMedium,
+                text = "− ${formatDurationHm(trip.pausedMinutes)} Pause = " +
+                    "${formatDurationHm(trip.drivingDurationMinutes)} Fahrzeit",
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        return
     }
-
-    var selectedIndex by remember(trip.id) { mutableStateOf(points.size - 1) }
-    // Zusätzliche Sicherheitsgrenze: trip.maxSpeedKmh kommt von loc.speed (GPS-Chip, Doppler-
-    // basiert, deutlich robuster als unsere eigene Positions-Differenz-Rechnung) und ist schon in
-    // den Stat-Kacheln zu sehen. scaleMax rundet das für eine lesbare Achsenbeschriftung auf.
-    val maxSpeed = remember(trip.id) { trip.maxSpeedKmh.toFloat().coerceAtLeast(1f) }
-    val scaleMax = remember(maxSpeed) { niceCeilSpeed(maxSpeed) }
-    val totalDuration = remember(points) { points.last().offsetSeconds.coerceAtLeast(1f) }
-    val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.GERMANY) }
-    val textMeasurer = rememberTextMeasurer()
-    val leftGutterPx = with(LocalDensity.current) { 34.dp.toPx() } // Platz links für die Achsenbeschriftung
-
-    // Meldet die aktuell ausgewählte Position an die Karte, damit dort der Scrub-Marker mitwandert
-    LaunchedEffect(selectedIndex, points) {
-        points.getOrNull(selectedIndex)?.let { onScrub(it.lat to it.lon) }
-    }
-
-    val accent = MaterialTheme.colorScheme.primary
-    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
-    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
-
-    Column(modifier = modifier) {
-        // Info-Chip zum aktuell ausgewählten Punkt
-        val info = points[selectedIndex]
-        Row(
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .clip(RoundedCornerShape(14.dp))
-                .background(surfaceVariant)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text("🕐 ${timeFormat.format(Date(info.timestamp))}", style = MaterialTheme.typography.labelSmall)
-            Text("📍 %.2f km".format(info.cumulativeKm), style = MaterialTheme.typography.labelSmall)
-            Text("⚡ %.0f km/h".format(info.speedKmh), style = MaterialTheme.typography.labelSmall)
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .pointerInput(points) {
-                    detectTapGestures { offset ->
-                        val plotW = (size.width - leftGutterPx).coerceAtLeast(1f)
-                        val fraction = ((offset.x - leftGutterPx) / plotW).coerceIn(0f, 1f)
-                        selectedIndex = (fraction * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
-                    }
-                }
-                .pointerInput(points) {
-                    detectDragGestures { change, _ ->
-                        change.consume()
-                        val plotW = (size.width - leftGutterPx).coerceAtLeast(1f)
-                        val fraction = ((change.position.x - leftGutterPx) / plotW).coerceIn(0f, 1f)
-                        selectedIndex = (fraction * (points.size - 1)).toInt().coerceIn(0, points.size - 1)
-                    }
-                }
-        ) {
-            val w = size.width
-            val h = size.height
-            val leftGutter = leftGutterPx
-            val plotW = (w - leftGutter).coerceAtLeast(1f)
-
-            // Gitterlinien + Achsenbeschriftung (0 / 1/3 / 2/3 / voll), damit sich die Skala ablesen lässt
-            listOf(0f, 1f / 3f, 2f / 3f, 1f).forEach { frac ->
-                val y = h - frac * h
-                val value = (scaleMax * frac).roundToInt()
-                drawLine(
-                    color = onSurfaceVariant.copy(alpha = 0.12f),
-                    start = Offset(leftGutter, y),
-                    end = Offset(w, y),
-                    strokeWidth = 1f
-                )
-                val label = textMeasurer.measure(
-                    text = "$value",
-                    style = TextStyle(fontSize = 10.sp, color = onSurfaceVariant.copy(alpha = 0.6f))
-                )
-                drawText(
-                    textLayoutResult = label,
-                    topLeft = Offset(
-                        leftGutter - 6f - label.size.width,
-                        (y - label.size.height / 2f).coerceIn(0f, h - label.size.height)
-                    )
-                )
-            }
-
-            val path = Path()
-            points.forEachIndexed { i, p ->
-                val x = leftGutter + (p.offsetSeconds / totalDuration) * plotW
-                val y = h - (p.speedKmh / scaleMax).coerceAtMost(1f) * h
-                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-            }
-            drawPath(
-                path = path,
-                color = accent,
-                style = Stroke(width = 5f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-            )
-
-            val sel = points[selectedIndex]
-            val selX = leftGutter + (sel.offsetSeconds / totalDuration) * plotW
-            val selY = h - (sel.speedKmh / scaleMax).coerceAtMost(1f) * h
-
-            drawLine(
-                color = onSurfaceVariant.copy(alpha = 0.4f),
-                start = Offset(selX, 0f),
-                end = Offset(selX, h),
-                strokeWidth = 2f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))
-            )
-            drawCircle(color = ComposeColor.White, radius = 12f, center = Offset(selX, selY))
-            drawCircle(
-                color = accent,
-                radius = 12f,
-                center = Offset(selX, selY),
-                style = Stroke(width = 4f)
-            )
-        }
-    }
-}
-
-/**
- * Median-Filter über die Geschwindigkeit (Fenster von 9 Punkten): einzelne GPS-Ausreißer (kurzer
- * ungenauer Fix) erzeugen sonst isolierte Nadel-Spitzen statt eines realistisch wirkenden Verlaufs
- * - der Median eines Fensters ignoriert genau solche einzelnen Ausreißer, echte Beschleunigungs-/
- * Bremstrends bleiben erhalten. cumulativeKm/Position bleiben unverändert.
- * windowRadius=4 statt 2: GPS-Aussetzer (z.B. beim Einrasten des Fixes zu Fahrtbeginn oder in einer
- * Unterführung) liefern oft mehrere aufeinanderfolgende schlechte Punkte statt nur einem einzelnen
- * - ein 5-Punkte-Fenster reißt bei 3 aufeinanderfolgenden Ausreißern durch (der Ausreißer wird selbst
- * zum Median), ein 9-Punkte-Fenster hält das deutlich zuverlässiger ab (verifiziert per Test).
- */
-private fun List<GraphPoint>.medianFiltered(windowRadius: Int = 4): List<GraphPoint> {
-    val raw = map { it.speedKmh }
-    return mapIndexed { i, p ->
-        val lo = (i - windowRadius).coerceAtLeast(0)
-        val hi = (i + windowRadius).coerceAtMost(raw.size - 1)
-        val window = raw.subList(lo, hi + 1).sorted()
-        p.copy(speedKmh = window[window.size / 2])
-    }
-}
-
-// Letzte Sicherheitsgrenze für die Anzeige, bewusst NICHT trip.maxSpeedKmh: dieser Wert kommt zwar
-// normalerweise vom GPS-Chip direkt (Doppler-basiert, robuster als Positions-Differenzen), kann
-// aber selbst durch genau dasselbe GPS-Problem verfälscht sein (z.B. beim Einrasten des Fixes zu
-// Fahrtbeginn) - ein Clamp darauf würde dann einen verdächtig glatten Plateau exakt auf diesem
-// (falschen) Wert erzeugen, statt das Problem sichtbar zu machen. 260 km/h ist für ein normales
-// Auto ohnehin unrealistisch, greift also praktisch nie bei echten Daten, nur bei Sensor-Ausfällen,
-// die selbst das breitere Median-Fenster nicht abfängt. Spiegelt PLAUSIBLE_MAX_CAR_KMH in js/app.js.
-private const val PLAUSIBLE_MAX_CAR_KMH = 260f
-
-/**
- * Gemeinsame Geschwindigkeits-Serie für eine Fahrt (median-gefiltert + gekappt), damit
- * Geschwindigkeits-Graph und Routen-Farbe/-Hover exakt dieselben Werte anzeigen. Spiegelt
- * getTripSpeedSeries() in js/app.js.
- */
-private fun speedSeriesClamped(trip: Trip, context: android.content.Context): List<GraphPoint> {
-    val filtered = trip.toSpeedSeries(context).medianFiltered()
-    return filtered.map { if (it.speedKmh > PLAUSIBLE_MAX_CAR_KMH) it.copy(speedKmh = PLAUSIBLE_MAX_CAR_KMH) else it }
-}
-
-/** Rundet für eine lesbare Achsenbeschriftung auf ein "glattes" Vielfaches von 10 auf. */
-private fun niceCeilSpeed(value: Float): Float = maxOf(10f, kotlin.math.ceil(value / 10f) * 10f)
-
-/** Wandelt die gespeicherten GPS-Punkte in eine Zeit/Geschwindigkeit/Distanz-Serie für den Graphen um. */
-private fun Trip.toSpeedSeries(context: android.content.Context): List<GraphPoint> {
-    val raw = toTrackPoints(context)
-    if (raw.size < 2) return emptyList()
-
-    val startTs = raw.first().third
-    var cumulativeMeters = 0.0
-    val result = mutableListOf<GraphPoint>()
-
-    for (i in raw.indices) {
-        val speedKmh = if (i == 0) {
-            segmentSpeedKmh(raw[0], raw[1])
-        } else {
-            cumulativeMeters += haversineMetersPoints(raw[i - 1], raw[i])
-            segmentSpeedKmh(raw[i - 1], raw[i])
-        }
-        result.add(
-            GraphPoint(
-                offsetSeconds = ((raw[i].third - startTs) / 1000).toFloat(),
-                speedKmh = speedKmh.toFloat(),
-                cumulativeKm = (cumulativeMeters / 1000.0).toFloat(),
-                timestamp = raw[i].third,
-                lat = raw[i].first,
-                lon = raw[i].second
-            )
-        )
-    }
-    return result
-}
-
-private fun segmentSpeedKmh(p1: Triple<Double, Double, Long>, p2: Triple<Double, Double, Long>): Double {
-    val dtSeconds = (p2.third - p1.third) / 1000.0
-    if (dtSeconds <= 0) return 0.0
-    return (haversineMetersPoints(p1, p2) / dtSeconds) * 3.6
-}
-
-private fun haversineMetersPoints(p1: Triple<Double, Double, Long>, p2: Triple<Double, Double, Long>): Double {
-    val earthRadius = 6371000.0
-    val dLat = Math.toRadians(p2.first - p1.first)
-    val dLon = Math.toRadians(p2.second - p1.second)
-    val a = kotlin.math.sin(dLat / 2).let { it * it } +
-        kotlin.math.cos(Math.toRadians(p1.first)) * kotlin.math.cos(Math.toRadians(p2.first)) *
-        kotlin.math.sin(dLon / 2).let { it * it }
-    val c = 2 * kotlin.math.atan2(kotlin.math.sqrt(a), kotlin.math.sqrt(1 - a))
-    return earthRadius * c
 }
 
 @Composable

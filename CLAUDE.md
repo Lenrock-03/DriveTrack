@@ -20,7 +20,7 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
 
 - **Einstiegspunkt**: `MainActivity.kt` – eine einzige Activity, kein Navigation-Component, Tab-Wechsel
   über simplen Compose-State (`NavTab`-Enum: HOME, FAHRTEN, AUFZEICHNEN, KARTE, EINSTELLUNGEN)
-- **Datenbank**: Room (aktuell Version 6), drei Entities – `Trip`, `Car`, `UserProfile`
+- **Datenbank**: Room (aktuell Version 7), drei Entities – `Trip`, `Car`, `UserProfile`
   (siehe `data/`, `data/local/`). Migrationen additiv (`ALTER TABLE ... ADD COLUMN`), NICHT
   vergessen sie in `AppDatabase.addMigrations(...)` einzutragen – `fallbackToDestructiveMigration()`
   ist aktiv, ein Versionsbump ohne registrierte Migration löscht sonst kommentarlos alle Daten
@@ -38,7 +38,39 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   (`RouteColorLegend()`) unten links, solange der Modus aktiv ist. Seit 0.4.2 zweistufig:
   0–130 km/h grün→rot (`ROUTE_COLOR_RED_KMH`), 130–180 km/h zusätzlich rot→lila
   (`ROUTE_COLOR_PURPLE_KMH`, danach gekappt). Spiegelt sich 1:1 in der Web-App
-  (`renderRouteLine()`/`speedToColor()` in `js/app.js`).
+  (`renderRouteLine()`/`speedToColor()` in `js/app.js`). Seit 0.8.0 in `ui/components/
+  RouteDetailMap.kt` (Karte inkl. `RouteColorMode`/`applyRouteColorMode`/`buildSpeedColoredSegments`)
+  und `ui/components/SpeedGraphChart.kt` (`SpeedGraph`) ausgelagert, damit `TripEditScreen` dieselben
+  Komponenten nutzt statt sie zu duplizieren; die zugehörige Distanz-/Geschwindigkeits-Mathematik
+  (`GraphPoint`, `toSpeedSeries()`, `medianFiltered()`, `speedSeriesClamped()`, ...) liegt seitdem
+  Compose-frei in `data/TripGeoMath.kt`.
+- **Fahrten bearbeiten** (seit 0.8.0): `ui/screens/TripEditScreen.kt`, erreichbar über den Stift-
+  Button in `TripDetailScreen`s TopAppBar (`MainActivity`-State `editingTripId`, gleiches Muster wie
+  `editingCarId` – liegt "über" der Detailseite, `selectedTrip` bleibt währenddessen gesetzt).
+  Bedienung: im wiederverwendeten `SpeedGraph` scrubben, "Punkt A/B setzen" merkt sich den jeweils
+  aktuell gescrubbten Zeitstempel (`SpeedGraph.onScrub` liefert seit 0.8.0 den vollen `GraphPoint`
+  statt nur Lat/Lon, damit der Zeitstempel verfügbar ist). Zwei Kategorien von Änderungen:
+  - **Zuschneiden** (destruktiv, entfernt GPS-Punkte endgültig): Anfang bis A / B bis Ende
+    abschneiden, oder A–B als Pause aus der Mitte entfernen. Sammelt sich erst in einer einsehbaren,
+    einzeln löschbaren Änderungsliste, wird erst nach Bestätigungsdialog über
+    `data/TripGeoMath.kt::applyTripEditPlan()` angewendet. Dabei bleibt `startTimestamp`/
+    `endTimestamp` (Gesamtdauer) durch einen Pause-Cut **unverändert** – nur `pausedMinutes`
+    (akkumuliert über mehrere Bearbeitungs-Sessions) steigt, `Trip.drivingDurationMinutes`
+    ("Fahrzeit" = Gesamtdauer − pausedMinutes) sinkt entsprechend, `avgSpeedKmh` wird darüber neu
+    berechnet. Punkte werden in zusammenhängende Läufe gruppiert, damit Distanz nie über eine
+    Schnittlücke hinweg summiert wird. Nach jedem Schnitt wird
+    `MapThumbnailGenerator.invalidate()` aufgerufen (sonst zeigt die Fahrtenliste ein veraltetes
+    Vorschaubild).
+  - **Markieren** (nicht-destruktiv, sofort gespeichert): Fahrt-Labels (`Trip.labels`, kommagetrennt,
+    Presets wie "⛴ Fähre" + Freitext) als Badges in `TripListItem`/`TripDetailScreen`, und
+    Streckenabschnitts-Markierungen (`Trip.segmentMarksJson`, `SegmentMark(label, startTs, endTs)`)
+    als gestrichelte Signalfarben-Linie auf der Karte (`RouteDetailMap`). Ein markierter Abschnitt
+    bleibt Teil von Distanz/Dauer/Ø-Geschwindigkeit, wird aber automatisch aus `maxSpeedKmh`
+    ausgeschlossen (`recomputeMaxSpeedExcludingMarks()`) – Grundmotivation: eine kurze Autofähre
+    soll die Höchstgeschwindigkeits-Statistik nicht verfälschen.
+  - "Fahrzeit"-Kacheln auf Home-Dashboard/`CarDetailScreen` nutzen seit 0.8.0
+    `Trip.drivingDurationMinutes` statt der reinen Gesamtdauer (für Fahrten ohne Pause-Schnitt
+    identisches Ergebnis wie vorher).
 - **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt`
 - **Einstellungen** (seit 0.5.0): `ui/screens/SettingsScreen.kt` ist nur noch der Einstiegspunkt
   (Konto/Fahrzeuge/Daten/Über, ~200 Zeilen), mit gemeinsamer `SettingsSectionCard`/`SettingsNavCard`
@@ -86,7 +118,12 @@ Kompletter Code in `data/server/`:
   bleibt als manueller Fallback bestehen, wird durch Auto-Sync aber seltener gebraucht
 
 Backup-JSON-Struktur (muss mit Backend + Web-App übereinstimmen): `{ version, users[], cars[], trips[] }`,
-gebaut von `export/BackupExporter.kt` (`buildBackupJson()` / `importBackupFromJson()`).
+gebaut von `export/BackupExporter.kt` (`buildBackupJson()` / `importBackupFromJson()`). Neue
+Trip-Felder (z. B. `labels`/`pausedMinutes`/`segmentMarksJson` seit 0.8.0) werden additiv ergänzt und
+beim Import defensiv gelesen (`optLong`/`optString`/`isNull`-Prüfung) – alte Backups ohne diese
+Schlüssel bleiben importierbar. Das Backend speichert das Backup nur als E2E-verschlüsselten Blob
+(sieht die Feldstruktur nie im Klartext), die Web-App ignoriert unbekannte JSON-Schlüssel beim
+Parsen – rein additive Trip-Felder brauchen deshalb **keine** Backend-/Web-Änderung.
 
 ## Auto-Sync mit dem Server (seit 0.3.0)
 

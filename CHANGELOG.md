@@ -5,6 +5,31 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.8.0] - 2026-08-09
+
+### Hinzugefügt
+- **Fahrten bearbeiten**: neuer "Bearbeiten"-Screen (über den Stift-Button in der Fahrt-
+  Detailseite), erreichbar über zwei markierbare Punkte A/B im Geschwindigkeits-Graph:
+  - **Zuschneiden**: Anfang bis A abschneiden, B bis Ende abschneiden, oder A–B als Pause aus der
+    Mitte entfernen. Alle geplanten Schnitte erscheinen zuerst in einer einsehbaren, einzeln
+    löschbaren Änderungsliste und werden erst nach Bestätigung ("kann nicht rückgängig gemacht
+    werden") tatsächlich angewendet.
+  - Beim Entfernen einer Pause aus der Mitte bleibt die **Gesamtdauer** der Fahrt (echte Start-/
+    Endzeit) unverändert – nur die **Fahrzeit** (und damit Ø-Geschwindigkeit) sinkt um die
+    herausgeschnittene Pause. Fahrt-Detailseite zeigt bei bearbeiteten Fahrten zusätzlich "− X min
+    Pause = Y Fahrzeit" an. Die "Fahrzeit"-Kachel auf Startbildschirm/Fahrzeug-Statistik nutzt jetzt
+    ebenfalls die Fahrzeit statt der reinen Gesamtdauer (für unbearbeitete Fahrten identisch).
+  - **Markieren**: Fahrten können Labels bekommen (z. B. "⛴ Fähre", "☕ Pause gemacht", "🌙
+    Nachtfahrt" oder frei Text), sichtbar als Badges in Fahrtenliste und -Detail. Zusätzlich lässt
+    sich ein Streckenabschnitt (z. B. eine Fährüberfahrt) markieren – auf der Karte gestrichelt
+    hervorgehoben und automatisch aus der Höchstgeschwindigkeits-Statistik ausgeschlossen (Distanz/
+    Dauer/Ø-Geschwindigkeit bleiben davon unberührt).
+- Routen-Karte und Geschwindigkeits-Graph aus `TripDetailScreen.kt` in eigene, wiederverwendbare
+  Komponenten ausgelagert (`RouteDetailMap.kt`, `SpeedGraphChart.kt`), damit der neue Bearbeiten-
+  Screen dieselbe Karte/denselben Graphen nutzt statt sie zu duplizieren.
+- Room-Datenbank auf Version 7 (additive Migration: `labels`, `pausedMinutes`,
+  `segmentMarksJson` an Fahrten, bestehende Daten bleiben erhalten).
+
 ## [0.7.0] - 2026-08-06
 
 ### Hinzugefügt

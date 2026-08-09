@@ -68,6 +68,12 @@ object BackupExporter {
                 // Autonamen statt nur der ID mitschreiben, damit die Zuordnung Fahrt→Auto
                 // auch beim Import in eine andere/leere Datenbank robust nachvollzogen werden kann.
                 put("carId", t.carId ?: JSONObject.NULL)
+                // Zuschneiden/Markieren (TripEditScreen) - additive Felder, alte Backups ohne sie
+                // importieren weiterhin fehlerfrei (siehe defensive optLong/optString/isNull-Lesung
+                // unten in importBackupFromJson).
+                put("labels", t.labels ?: JSONObject.NULL)
+                put("pausedMinutes", t.pausedMinutes)
+                put("segmentMarksJson", t.segmentMarksJson)
             })
         }
         root.put("trips", tripsArray)
@@ -192,7 +198,12 @@ object BackupExporter {
                     distanceMeters = obj.getDouble("distanceMeters"),
                     avgSpeedKmh = obj.getDouble("avgSpeedKmh"),
                     maxSpeedKmh = obj.getDouble("maxSpeedKmh"),
-                    carId = newCarId
+                    carId = newCarId,
+                    // Defensiv gelesen (optLong/optString/isNull) - Backups von vor diesem Feature
+                    // (v0.8.0) haben diese Schlüssel noch nicht, sollen aber trotzdem importierbar bleiben.
+                    labels = if (obj.has("labels") && !obj.isNull("labels")) obj.getString("labels") else null,
+                    pausedMinutes = obj.optLong("pausedMinutes", 0),
+                    segmentMarksJson = obj.optString("segmentMarksJson", "[]")
                 )
             )
             TrackFileStore.write(context, newTripId, gpxTrackJson)

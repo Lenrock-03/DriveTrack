@@ -1,7 +1,6 @@
 package de.kornelriedl.drivetrack.ui.screens
 
 import android.content.Context
-import android.content.pm.PackageManager
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -25,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.UserProfile
+import de.kornelriedl.drivetrack.data.appVersionName
 import de.kornelriedl.drivetrack.ui.components.AddCarDialog
 import de.kornelriedl.drivetrack.ui.components.CarPhoto
 import de.kornelriedl.drivetrack.ui.components.SettingsGroupHeader
@@ -300,15 +300,3 @@ fun SettingsScreen(
         )
     }
 }
-
-/**
- * Liest die versionName aus dem PackageManager statt aus BuildConfig (das erfordert kein
- * zusätzliches "buildFeatures.buildConfig = true" in build.gradle.kts und spiegelt garantiert
- * die tatsächlich installierte APK wider).
- */
-private fun appVersionName(context: Context): String =
-    try {
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
-    } catch (e: PackageManager.NameNotFoundException) {
-        "?"
-    }

@@ -5,6 +5,17 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.15.0] - 2026-08-09
+
+### Hinzugefügt
+- **"Was ist neu"-Dialog nach einem Update**: beim ersten Öffnen nach einer neuen Version zeigt
+  die App kurz eine für Endnutzer verständliche Zusammenfassung dessen, was sich geändert hat
+  (`ReleaseNotes.kt::RELEASE_NOTES`, ausgelöst über `ReleaseNotesPreferences` in
+  `MainActivity.kt`). Bewusst getrennt von diesem technischen `CHANGELOG.md` hier - jener bleibt
+  Entwickler-Dokumentation, der In-App-Dialog eine kurze, kuratierte Auswahl. Bei einer frischen
+  Installation erscheint nichts (kein "Rückblick" für neue Nutzer), bei mehreren übersprungenen
+  Versionen werden alle seither neuen Einträge gestapelt gezeigt.
+
 ## [0.14.0] - 2026-08-09
 
 ### Hinzugefügt

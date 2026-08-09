@@ -151,6 +151,18 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   `TripDetailScreen.kt` stehenden Formatierung extrahiert - beide Stellen nutzen jetzt dieselbe
   Funktion. Spiegelt sich 1:1 in der Web-App (`formatDateHeading()`/`localDayKey()` in `js/app.js`).
 - **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt`
+- **"Was ist neu"-Dialog** (seit 0.15.0): `data/ReleaseNotes.kt` hält eine kuratierte, für
+  Endnutzer verständliche Liste `RELEASE_NOTES` (neueste zuerst) - bewusst NICHT dasselbe wie
+  dieses `CHANGELOG.md` (zu technisch, Datei-/Funktionsnamen). Bei jedem Release mit für den
+  Nutzer sichtbaren Änderungen dort einen neuen Eintrag ergänzen. `data/ReleaseNotesPreferences.kt`
+  merkt sich die zuletzt gesehene `versionName` (`SharedPreferences`, Muster wie `CarPreferences.kt`).
+  `MainActivity.kt`s `LaunchedEffect(Unit)` vergleicht beim Start `appVersionName()` (jetzt in
+  `data/AppVersion.kt`, aus `SettingsScreen.kt` extrahiert und dort ebenfalls genutzt) gegen den
+  gespeicherten Stand: weicht er ab, zeigt `ui/components/WhatsNewDialog.kt` die seither neuen
+  Einträge (`unseenReleaseNotes()` - taucht die gespeicherte Version dort gar nicht auf, z.B. bei
+  einem sehr alten Update, werden vorsichtshalber ALLE Einträge gezeigt). Bei einer frischen
+  Installation (kein gespeicherter Wert) erscheint bewusst NICHTS - nur der aktuelle Stand wird
+  gemerkt, ein neuer Nutzer bekommt keinen Rückblick auf die komplette Historie serviert.
 - **Einstellungen** (seit 0.5.0): `ui/screens/SettingsScreen.kt` ist nur noch der Einstiegspunkt
   (Konto/Fahrzeuge/Daten/Über, ~200 Zeilen), mit gemeinsamer `SettingsSectionCard`/`SettingsNavCard`
   (`ui/components/SettingsSectionCard.kt`) statt vorher 7x kopierter Card-Boilerplate. Fahrzeuge

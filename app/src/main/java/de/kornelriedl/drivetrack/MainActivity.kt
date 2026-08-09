@@ -15,12 +15,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.CarPreferences
+import de.kornelriedl.drivetrack.data.ReleaseNote
+import de.kornelriedl.drivetrack.data.ReleaseNotesPreferences
 import de.kornelriedl.drivetrack.data.SegmentMark
 import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.TripEditPlan
 import de.kornelriedl.drivetrack.data.TripGroup
 import de.kornelriedl.drivetrack.data.UserPreferences
 import de.kornelriedl.drivetrack.data.UserProfile
+import de.kornelriedl.drivetrack.data.appVersionName
 import de.kornelriedl.drivetrack.data.applyTripEditPlan
 import de.kornelriedl.drivetrack.data.buildTripListEntries
 import de.kornelriedl.drivetrack.data.local.AppDatabase
@@ -28,6 +31,7 @@ import de.kornelriedl.drivetrack.data.local.CarPhotoStore
 import de.kornelriedl.drivetrack.data.local.TrackFileStore
 import de.kornelriedl.drivetrack.data.recomputeMaxSpeedExcludingMarks
 import de.kornelriedl.drivetrack.data.segmentMarks
+import de.kornelriedl.drivetrack.data.unseenReleaseNotes
 import de.kornelriedl.drivetrack.data.server.ServerAuthPreferences
 import de.kornelriedl.drivetrack.data.server.ServerSession
 import de.kornelriedl.drivetrack.data.server.ServerSync
@@ -39,6 +43,7 @@ import de.kornelriedl.drivetrack.export.GpxImporter
 import de.kornelriedl.drivetrack.export.MapThumbnailGenerator
 import de.kornelriedl.drivetrack.ui.components.DriveTrackBottomBar
 import de.kornelriedl.drivetrack.ui.components.NavTab
+import de.kornelriedl.drivetrack.ui.components.WhatsNewDialog
 import de.kornelriedl.drivetrack.ui.screens.CarDetailScreen
 import de.kornelriedl.drivetrack.ui.screens.HomeScreen
 import de.kornelriedl.drivetrack.ui.screens.ImportExportScreen
@@ -130,6 +135,21 @@ fun DriveTrackApp(
         if (!ServerSession.isUnlocked) {
             ServerAuthPreferences.getDek(context)?.let { ServerSession.setDek(it) }
         }
+    }
+
+    // "Was ist neu"-Dialog beim ersten Öffnen nach einem Update (seit 0.15.0) - vergleicht die
+    // tatsächlich installierte Version (appVersionName()) mit der zuletzt gesehenen
+    // (ReleaseNotesPreferences). Bei einer frischen Installation (kein gespeicherter Wert) wird
+    // NUR der aktuelle Stand gemerkt, ohne die komplette Historie zu zeigen - siehe
+    // ReleaseNotesPreferences.kt.
+    var whatsNewNotes by remember { mutableStateOf<List<ReleaseNote>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        val currentVersion = appVersionName(context)
+        val lastSeenVersion = ReleaseNotesPreferences.getLastSeenVersion(context)
+        if (lastSeenVersion != null && lastSeenVersion != currentVersion) {
+            whatsNewNotes = unseenReleaseNotes(lastSeenVersion)
+        }
+        ReleaseNotesPreferences.setLastSeenVersion(context, currentVersion)
     }
 
     var activeUserId by remember { mutableStateOf(UserPreferences.getActiveUserId(context)) }
@@ -725,5 +745,9 @@ fun DriveTrackApp(
                 modifier = Modifier.padding(padding)
             )
         }
+    }
+
+    if (whatsNewNotes.isNotEmpty()) {
+        WhatsNewDialog(notes = whatsNewNotes, onDismiss = { whatsNewNotes = emptyList() })
     }
 }

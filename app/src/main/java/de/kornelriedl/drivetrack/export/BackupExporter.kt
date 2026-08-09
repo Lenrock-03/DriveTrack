@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.TripGroup
 import de.kornelriedl.drivetrack.data.UserProfile
 import de.kornelriedl.drivetrack.data.local.AppDatabase
 import de.kornelriedl.drivetrack.data.local.TrackFileStore
@@ -36,7 +37,13 @@ object BackupExporter {
 
     private const val BACKUP_VERSION = 1
 
-    fun buildBackupJson(context: Context, users: List<UserProfile>, cars: List<Car>, trips: List<Trip>): String {
+    fun buildBackupJson(
+        context: Context,
+        users: List<UserProfile>,
+        cars: List<Car>,
+        trips: List<Trip>,
+        groups: List<TripGroup> = emptyList()
+    ): String {
         val root = JSONObject()
         root.put("version", BACKUP_VERSION)
 
@@ -58,6 +65,17 @@ object BackupExporter {
         }
         root.put("cars", carsArray)
 
+        // Manuell erstellte Fahrten-Gruppen (z.B. "Urlaub Kroatien") - additiv, alte Backups ohne
+        // dieses Feld importieren weiterhin fehlerfrei (siehe optJSONArray unten).
+        val groupsArray = JSONArray()
+        groups.forEach { g ->
+            groupsArray.put(JSONObject().apply {
+                put("id", g.id)
+                put("name", g.name)
+            })
+        }
+        root.put("groups", groupsArray)
+
         val tripsArray = JSONArray()
         trips.forEach { t ->
             tripsArray.put(JSONObject().apply {
@@ -77,6 +95,7 @@ object BackupExporter {
                 put("labels", t.labels ?: JSONObject.NULL)
                 put("pausedMinutes", t.pausedMinutes)
                 put("segmentMarksJson", t.segmentMarksJson)
+                put("groupId", t.groupId ?: JSONObject.NULL)
             })
         }
         root.put("trips", tripsArray)
@@ -85,10 +104,16 @@ object BackupExporter {
     }
 
     /** Schreibt das Backup ins Cache-Verzeichnis und öffnet den Android-Share-Dialog. */
-    fun shareBackup(context: Context, users: List<UserProfile>, cars: List<Car>, trips: List<Trip>) {
+    fun shareBackup(
+        context: Context,
+        users: List<UserProfile>,
+        cars: List<Car>,
+        trips: List<Trip>,
+        groups: List<TripGroup> = emptyList()
+    ) {
         val gpxDir = File(context.cacheDir, "gpx").apply { mkdirs() }
         val file = File(gpxDir, "DriveTrack_Backup_${System.currentTimeMillis()}.json")
-        file.writeText(buildBackupJson(context, users, cars, trips))
+        file.writeText(buildBackupJson(context, users, cars, trips, groups))
 
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val intent = Intent(Intent.ACTION_SEND).apply {
@@ -127,9 +152,11 @@ object BackupExporter {
         val userDao = db.userDao()
         val carDao = db.carDao()
         val tripDao = db.tripDao()
+        val groupDao = db.tripGroupDao()
 
         val existingUsers = userDao.getAllUsers().first()
         val existingCars = carDao.getAllCars().first()
+        val existingGroups = groupDao.getAllGroups().first()
         val existingTrips = tripDao.getAllTrips().first()
 
         // Nutzer: nach Name abgleichen
@@ -172,6 +199,23 @@ object BackupExporter {
             }
         }
 
+        // Fahrten-Gruppen: nach Name abgleichen (entscheidend für eine korrekte Fahrt→Gruppe-Zuordnung).
+        // optJSONArray statt getJSONArray - alte Backups (vor diesem Feature) haben kein "groups"-Feld.
+        val groupIdMap = mutableMapOf<Long, Long>()
+        val groupsArray = root.optJSONArray("groups") ?: JSONArray()
+        for (i in 0 until groupsArray.length()) {
+            val obj = groupsArray.getJSONObject(i)
+            val name = obj.getString("name")
+            val oldId = obj.getLong("id")
+            val existing = existingGroups.find { it.name.equals(name, ignoreCase = true) }
+            if (existing != null) {
+                groupIdMap[oldId] = existing.id
+            } else {
+                val newId = groupDao.insertGroup(TripGroup(name = name))
+                groupIdMap[oldId] = newId
+            }
+        }
+
         // Fahrten: Start-/Endzeitpunkt identisch = dieselbe Aufzeichnung -> überspringen
         var tripsImported = 0
         var tripsSkipped = 0
@@ -191,6 +235,8 @@ object BackupExporter {
 
             val oldCarId = if (obj.isNull("carId")) null else obj.getLong("carId")
             val newCarId = oldCarId?.let { carIdMap[it] }
+            val oldGroupId = if (obj.has("groupId") && !obj.isNull("groupId")) obj.getLong("groupId") else null
+            val newGroupId = oldGroupId?.let { groupIdMap[it] }
             val gpxTrackJson = obj.getString("gpxTrackJson")
 
             val newTripId = tripDao.insertTrip(
@@ -206,7 +252,8 @@ object BackupExporter {
                     // (v0.8.0) haben diese Schlüssel noch nicht, sollen aber trotzdem importierbar bleiben.
                     labels = if (obj.has("labels") && !obj.isNull("labels")) obj.getString("labels") else null,
                     pausedMinutes = obj.optLong("pausedMinutes", 0),
-                    segmentMarksJson = obj.optString("segmentMarksJson", "[]")
+                    segmentMarksJson = obj.optString("segmentMarksJson", "[]"),
+                    groupId = newGroupId
                 )
             )
             TrackFileStore.write(context, newTripId, gpxTrackJson)
@@ -247,9 +294,11 @@ object BackupExporter {
         val userDao = db.userDao()
         val carDao = db.carDao()
         val tripDao = db.tripDao()
+        val groupDao = db.tripGroupDao()
 
         val existingUsers = userDao.getAllUsers().first()
         val existingCars = carDao.getAllCars().first()
+        val existingGroups = groupDao.getAllGroups().first()
         val existingTrips = tripDao.getAllTrips().first()
 
         val userIdMap = mutableMapOf<Long, Long>()
@@ -290,6 +339,21 @@ object BackupExporter {
             }
         }
 
+        val groupIdMap = mutableMapOf<Long, Long>()
+        val groupsArray = root.optJSONArray("groups") ?: JSONArray()
+        for (i in 0 until groupsArray.length()) {
+            val obj = groupsArray.getJSONObject(i)
+            val name = obj.getString("name")
+            val oldId = obj.getLong("id")
+            val existing = existingGroups.find { it.name.equals(name, ignoreCase = true) }
+            if (existing != null) {
+                groupIdMap[oldId] = existing.id
+            } else {
+                val newId = groupDao.insertGroup(TripGroup(name = name))
+                groupIdMap[oldId] = newId
+            }
+        }
+
         var tripsImported = 0
         var tripsRestored = 0
         val tripsArray = root.optJSONArray("trips") ?: JSONArray()
@@ -299,6 +363,8 @@ object BackupExporter {
             val endTimestamp = obj.getLong("endTimestamp")
             val oldCarId = if (obj.isNull("carId")) null else obj.getLong("carId")
             val newCarId = oldCarId?.let { carIdMap[it] }
+            val oldGroupId = if (obj.has("groupId") && !obj.isNull("groupId")) obj.getLong("groupId") else null
+            val newGroupId = oldGroupId?.let { groupIdMap[it] }
             val gpxTrackJson = obj.getString("gpxTrackJson")
             val labels = if (obj.has("labels") && !obj.isNull("labels")) obj.getString("labels") else null
             val pausedMinutes = obj.optLong("pausedMinutes", 0)
@@ -317,7 +383,8 @@ object BackupExporter {
                         carId = newCarId,
                         labels = labels,
                         pausedMinutes = pausedMinutes,
-                        segmentMarksJson = segmentMarksJson
+                        segmentMarksJson = segmentMarksJson,
+                        groupId = newGroupId
                     )
                 )
                 TrackFileStore.write(context, existingTrip.id, gpxTrackJson)
@@ -334,7 +401,8 @@ object BackupExporter {
                         carId = newCarId,
                         labels = labels,
                         pausedMinutes = pausedMinutes,
-                        segmentMarksJson = segmentMarksJson
+                        segmentMarksJson = segmentMarksJson,
+                        groupId = newGroupId
                     )
                 )
                 TrackFileStore.write(context, newTripId, gpxTrackJson)

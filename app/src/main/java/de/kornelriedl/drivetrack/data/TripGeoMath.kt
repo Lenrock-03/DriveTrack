@@ -108,6 +108,66 @@ fun speedSeriesClamped(trip: Trip, context: Context): List<GraphPoint> {
     return filtered.map { if (it.speedKmh > PLAUSIBLE_MAX_CAR_KMH) it.copy(speedKmh = PLAUSIBLE_MAX_CAR_KMH) else it }
 }
 
+/**
+ * Kombinierte Geschwindigkeits-/Distanz-Serie über mehrere Fahrten einer Gruppe (siehe
+ * TripGroupDetailScreen/TripGroupRouteScreen) - Fahrten werden chronologisch (Start-Zeitpunkt)
+ * aneinandergereiht, offsetSeconds/cumulativeKm laufen dabei durchgehend weiter (KEINE echten
+ * Kalenderzeit-Lücken zwischen den Fahrten im Graphen, sonst würde die eigentliche Fahrzeit bei z.B.
+ * mehreren Tagen Abstand zwischen zwei Fahrten unlesbar zusammengequetscht).
+ *
+ * Wichtig: die Geschwindigkeit wird NIEMALS über die Nahtstelle zwischen zwei Fahrten hinweg
+ * berechnet - jede Fahrt bekommt ihre eigene, isolierte Punktreihe (`raw` unten ist pro Durchlauf
+ * IMMER nur die Punkte EINER Fahrt), der erste Punkt jeder Fahrt startet wie in toSpeedSeries() mit
+ * `segmentSpeedKmh(raw[0], raw[1])` statt mit dem letzten Punkt der vorherigen Fahrt verglichen zu
+ * werden. Ohne das würde die "Geschwindigkeit" am Übergang aus der Luftlinien-Distanz zwischen dem
+ * Ziel der einen und dem Start der nächsten Fahrt geteilt durch die (oft winzige oder über Tage
+ * hinweg riesige) Zeit dazwischen berechnet - ein astronomischer, physikalisch bedeutungsloser
+ * Ausreißer. Spiegelt exakt dieselbe "Läufe"-Idee wie applyTripEditPlan() für Pausen-Schnitte, hier
+ * nur über Fahrt-Grenzen statt über Schnitt-Lücken innerhalb einer einzelnen Fahrt.
+ */
+fun buildGroupSpeedSeries(trips: List<Trip>, context: Context): List<GraphPoint> {
+    var offsetBase = 0f
+    var cumulativeBase = 0f
+    val result = mutableListOf<GraphPoint>()
+
+    trips.sortedBy { it.startTimestamp }.forEach { trip ->
+        val raw = trip.toTrackPoints(context)
+        if (raw.size < 2) return@forEach
+
+        val tripStartTs = raw.first().third
+        var tripCumulativeMeters = 0.0
+
+        for (i in raw.indices) {
+            val speedKmh = if (i == 0) {
+                segmentSpeedKmh(raw[0], raw[1])
+            } else {
+                tripCumulativeMeters += haversineMetersPoints(raw[i - 1], raw[i])
+                segmentSpeedKmh(raw[i - 1], raw[i])
+            }
+            result.add(
+                GraphPoint(
+                    offsetSeconds = offsetBase + ((raw[i].third - tripStartTs) / 1000f),
+                    speedKmh = speedKmh.toFloat(),
+                    cumulativeKm = cumulativeBase + (tripCumulativeMeters / 1000.0).toFloat(),
+                    timestamp = raw[i].third,
+                    lat = raw[i].first,
+                    lon = raw[i].second
+                )
+            )
+        }
+
+        offsetBase += (raw.last().third - tripStartTs) / 1000f
+        cumulativeBase += (tripCumulativeMeters / 1000.0).toFloat()
+    }
+    return result
+}
+
+/** Wie speedSeriesClamped(), nur für die kombinierte Serie mehrerer Fahrten (siehe buildGroupSpeedSeries). */
+fun groupSpeedSeriesClamped(trips: List<Trip>, context: Context): List<GraphPoint> {
+    val filtered = buildGroupSpeedSeries(trips, context).medianFiltered()
+    return filtered.map { if (it.speedKmh > PLAUSIBLE_MAX_CAR_KMH) it.copy(speedKmh = PLAUSIBLE_MAX_CAR_KMH) else it }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Ab hier: neu für das Zuschneiden/Markieren von Fahrten (TripEditScreen).
 // ---------------------------------------------------------------------------------------------

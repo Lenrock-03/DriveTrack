@@ -18,9 +18,11 @@ import de.kornelriedl.drivetrack.data.CarPreferences
 import de.kornelriedl.drivetrack.data.SegmentMark
 import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.TripEditPlan
+import de.kornelriedl.drivetrack.data.TripGroup
 import de.kornelriedl.drivetrack.data.UserPreferences
 import de.kornelriedl.drivetrack.data.UserProfile
 import de.kornelriedl.drivetrack.data.applyTripEditPlan
+import de.kornelriedl.drivetrack.data.buildTripListEntries
 import de.kornelriedl.drivetrack.data.local.AppDatabase
 import de.kornelriedl.drivetrack.data.local.CarPhotoStore
 import de.kornelriedl.drivetrack.data.local.TrackFileStore
@@ -46,6 +48,9 @@ import de.kornelriedl.drivetrack.ui.screens.ServerBackupScreen
 import de.kornelriedl.drivetrack.ui.screens.SettingsScreen
 import de.kornelriedl.drivetrack.ui.screens.TripDetailScreen
 import de.kornelriedl.drivetrack.ui.screens.TripEditScreen
+import de.kornelriedl.drivetrack.ui.screens.TripGroupDetailScreen
+import de.kornelriedl.drivetrack.ui.screens.TripGroupPickerScreen
+import de.kornelriedl.drivetrack.ui.screens.TripGroupRouteScreen
 import de.kornelriedl.drivetrack.ui.theme.DriveTrackTheme
 import de.kornelriedl.drivetrack.tracking.LocationTracker
 import kotlinx.coroutines.Dispatchers
@@ -110,11 +115,13 @@ fun DriveTrackApp(
     val tripDao = remember { db.tripDao() }
     val carDao = remember { db.carDao() }
     val userDao = remember { db.userDao() }
+    val groupDao = remember { db.tripGroupDao() }
     val tracker = remember { LocationTracker.getInstance(context) }
 
     val trips by tripDao.getAllTrips().collectAsState(initial = emptyList())
     val cars by carDao.getAllCars().collectAsState(initial = emptyList())
     val users by userDao.getAllUsers().collectAsState(initial = emptyList())
+    val groups by groupDao.getAllGroups().collectAsState(initial = emptyList())
 
     // DEK aus dem verschlüsselten Gerätespeicher zurückholen, falls die App neu gestartet wurde
     // (z. B. durch Bluetooth-Auto-Start) - erst dadurch kann Auto-Sync auch dann laufen, ohne
@@ -222,6 +229,10 @@ fun DriveTrackApp(
     // vorher, keine sichtbare Änderung.
     val filteredTotalDurationMinutes = filteredTrips.sumOf { it.drivingDurationMinutes }
     val filteredAvgSpeedKmh = if (filteredTrips.isNotEmpty()) filteredTrips.map { it.avgSpeedKmh }.average() else 0.0
+    // Gruppierte + einzelne Fahrten gemischt, neueste zuerst (siehe data/TripGrouping.kt) - für
+    // Home (Dashboard) auf die neuesten 5 EINTRÄGE begrenzt (nicht 5 rohe Fahrten, sonst könnte
+    // eine Gruppe mit vielen alten Fahrten die Home-Vorschau verdrängen), Fahrten-Tab zeigt alle.
+    val filteredTripListEntries = buildTripListEntries(filteredTrips, groups)
 
     // Nur die Id merken, nicht das Trip-Objekt - TripDetailScreen liest die aktuelle Fahrt live aus
     // dem trips-Flow (wie editingCarId/editingTripId), damit Änderungen (Umbenennen, Zuschneiden,
@@ -233,6 +244,18 @@ fun DriveTrackApp(
     // Nur die Id merken, nicht das Trip-Objekt - TripEditScreen liest die aktuelle Fahrt live aus
     // dem trips-Flow (Muster identisch zu editingCarId oben).
     var editingTripId by remember { mutableStateOf<Long?>(null) }
+    // Gruppen-Detailseite (Muster identisch zu editingCarId/editingTripId - nur die Id merken, live
+    // aus dem groups-Flow gelesen). showGroupPicker = Erstellen-Modus (von HomeScreen aus, "+
+    // Gruppe"-Button), addToGroupId = Hinzufügen-Modus (aus TripGroupDetailScreen heraus, "Fahrten
+    // hinzufügen"-Button) - beides steuert denselben TripGroupPickerScreen, siehe dessen Doc-Kommentar.
+    var editingGroupId by remember { mutableStateOf<Long?>(null) }
+    var showGroupPicker by remember { mutableStateOf(false) }
+    var addToGroupId by remember { mutableStateOf<Long?>(null) }
+    // Vollbild-Karte + kombinierter Geschwindigkeits-Graph einer Gruppe (TripGroupRouteScreen),
+    // erreichbar über die kleine Übersichtskarte in TripGroupDetailScreen - liegt "über" dieser
+    // (editingGroupId bleibt währenddessen gesetzt), reines Bool reicht daher (Muster wie
+    // showServerBackup/showImportExport, nicht wie editingGroupId selbst eine eigene Id).
+    var showGroupRoute by remember { mutableStateOf(false) }
     // Zentral genutzt nach JEDER trip-relevanten lokalen Änderung (Umbenennen, Zuschneiden,
     // Labels/Markierungen speichern, Auto zuordnen, Löschen) - vorher synchronisierte nur das Ende
     // einer Aufzeichnung, alle anderen Bearbeitungen blieben bis zur nächsten Fahrt unsynchronisiert.
@@ -245,7 +268,8 @@ fun DriveTrackApp(
                 context,
                 userDao.getAllUsers().first(),
                 carDao.getAllCars().first(),
-                tripDao.getAllTrips().first()
+                tripDao.getAllTrips().first(),
+                groupDao.getAllGroups().first()
             )
         }
     }
@@ -287,6 +311,11 @@ fun DriveTrackApp(
                 withContext(Dispatchers.IO) {
                     TrackFileStore.write(context, outcome.trip.id, outcome.newTrackJson)
                     MapThumbnailGenerator.invalidate(context, outcome.trip.id)
+                    // Falls diese Fahrt Teil einer Gruppe ist, ist deren zwischengespeichertes
+                    // Übersichts-Thumbnail jetzt veraltet (enthält noch die alte Route dieser Fahrt) -
+                    // der Cache-Key dort ändert sich durch einen Zuschnitt NICHT (dieselbe Fahrten-Id-
+                    // Menge), ohne explizite Invalidierung würde also weiter das alte Bild angezeigt.
+                    outcome.trip.groupId?.let { groupId -> MapThumbnailGenerator.invalidateGroup(context, groupId) }
                 }
                 triggerBackgroundSync()
             } else {
@@ -330,7 +359,7 @@ fun DriveTrackApp(
     }
 
     val onExportBackup: () -> Unit = {
-        BackupExporter.shareBackup(context, users, cars, trips)
+        BackupExporter.shareBackup(context, users, cars, trips, groups)
     }
     val onImportBackup: (Uri) -> Unit = { uri ->
         scope.launch {
@@ -355,10 +384,17 @@ fun DriveTrackApp(
     // in Compose automatisch Vorrang, dieser Handler wird also nie für editingTripId aufgerufen,
     // solange TripEditScreen angezeigt wird.
     BackHandler(
-        enabled = selectedTripId != null || showServerBackup || editingCarId != null || showImportExport
+        enabled = selectedTripId != null || showServerBackup || editingCarId != null || showImportExport ||
+            editingGroupId != null || showGroupPicker || addToGroupId != null || showGroupRoute
     ) {
         when {
+            // Picker liegt "über" allem anderen hier (Erstellen-Modus über Home/Fahrten, Hinzufügen-
+            // Modus über TripGroupDetailScreen) - zuerst geprüft, analog zu editingTripId/selectedTripId.
+            showGroupPicker -> showGroupPicker = false
+            addToGroupId != null -> addToGroupId = null
+            showGroupRoute -> showGroupRoute = false
             selectedTripId != null -> selectedTripId = null
+            editingGroupId != null -> editingGroupId = null
             editingCarId != null -> editingCarId = null
             showImportExport -> showImportExport = false
             else -> showServerBackup = false
@@ -370,7 +406,9 @@ fun DriveTrackApp(
     val activity = context as? android.app.Activity
     var backPressedOnce by remember { mutableStateOf(false) }
     BackHandler(
-        enabled = selectedTripId == null && !showServerBackup && editingCarId == null && !showImportExport && editingTripId == null
+        enabled = selectedTripId == null && !showServerBackup && editingCarId == null && !showImportExport &&
+            editingTripId == null && editingGroupId == null && !showGroupPicker && addToGroupId == null &&
+            !showGroupRoute
     ) {
         when {
             currentTab != NavTab.HOME -> {
@@ -403,6 +441,47 @@ fun DriveTrackApp(
         return
     }
 
+    // Liegt "über" allem anderen (Erstellen-Modus direkt über Home/Fahrten, Hinzufügen-Modus über
+    // TripGroupDetailScreen, siehe dortiges addToGroupId) - deshalb vor den übrigen Blöcken geprüft.
+    if (showGroupPicker || addToGroupId != null) {
+        TripGroupPickerScreen(
+            targetGroupId = addToGroupId,
+            trips = trips,
+            groups = groups,
+            onCreateGroup = { name, tripIds ->
+                scope.launch {
+                    val newGroupId = groupDao.insertGroup(TripGroup(name = name))
+                    tripIds.forEach { tripId ->
+                        trips.find { it.id == tripId }?.let { trip ->
+                            tripDao.updateTrip(trip.copy(groupId = newGroupId))
+                        }
+                    }
+                    triggerBackgroundSync()
+                    showGroupPicker = false
+                }
+            },
+            onAddTrips = { tripIds ->
+                val targetId = addToGroupId
+                if (targetId != null) {
+                    scope.launch {
+                        tripIds.forEach { tripId ->
+                            trips.find { it.id == tripId }?.let { trip ->
+                                tripDao.updateTrip(trip.copy(groupId = targetId))
+                            }
+                        }
+                        triggerBackgroundSync()
+                        addToGroupId = null
+                    }
+                }
+            },
+            onBack = {
+                showGroupPicker = false
+                addToGroupId = null
+            }
+        )
+        return
+    }
+
     // Live aus dem trips-Flow abgeleitet statt eine beim Antippen eingefrorene Kopie zu halten -
     // dadurch sind Änderungen aus TripEditScreen (Zuschneiden, Labels/Markierungen speichern) sofort
     // sichtbar, sobald man dorthin zurückkehrt, ohne die Anzeige manuell nachpflegen zu müssen.
@@ -428,6 +507,7 @@ fun DriveTrackApp(
             users = users,
             cars = cars,
             trips = trips,
+            groups = groups,
             onImportComplete = { /* Listen aktualisieren sich automatisch über die Flows */ },
             onBack = { showServerBackup = false }
         )
@@ -456,6 +536,60 @@ fun DriveTrackApp(
         return
     }
 
+    val currentEditingGroup = groups.find { it.id == editingGroupId }
+
+    // Liegt "über" TripGroupDetailScreen (editingGroupId bleibt währenddessen gesetzt) - deshalb vor
+    // deren Block geprüft, analog zu editingTripId vor selectedTripId.
+    if (showGroupRoute && currentEditingGroup != null) {
+        TripGroupRouteScreen(
+            group = currentEditingGroup,
+            trips = trips.filter { it.groupId == currentEditingGroup.id },
+            onBack = { showGroupRoute = false }
+        )
+        return
+    }
+
+    if (currentEditingGroup != null) {
+        val groupTrips = trips.filter { it.groupId == currentEditingGroup.id }
+        TripGroupDetailScreen(
+            group = currentEditingGroup,
+            trips = groupTrips,
+            onRenameGroup = { newName ->
+                scope.launch {
+                    groupDao.updateGroup(currentEditingGroup.copy(name = newName))
+                    triggerBackgroundSync()
+                }
+            },
+            onOpenTrip = { trip -> selectedTripId = trip.id },
+            onRemoveTripFromGroup = { trip ->
+                scope.launch {
+                    tripDao.updateTrip(trip.copy(groupId = null))
+                    triggerBackgroundSync()
+                }
+            },
+            onAddTrips = { addToGroupId = currentEditingGroup.id },
+            onDeleteGroup = {
+                scope.launch {
+                    // Nur groupId der Mitgliedsfahrten zurücksetzen, NICHT die Fahrten löschen -
+                    // sie erscheinen danach automatisch wieder einzeln in der Fahrtenliste
+                    // (buildTripListEntries behandelt groupId == null als Einzelfahrt).
+                    trips.filter { it.groupId == currentEditingGroup.id }.forEach { trip ->
+                        tripDao.updateTrip(trip.copy(groupId = null))
+                    }
+                    groupDao.deleteGroup(currentEditingGroup)
+                    // Gecachte Gruppen-Thumbnails aufräumen, sonst bleiben sie für immer verwaist
+                    // in cacheDir liegen (spiegelt CarPhotoStore.deleteAllFor() beim Auto löschen).
+                    withContext(Dispatchers.IO) { MapThumbnailGenerator.invalidateGroup(context, currentEditingGroup.id) }
+                    triggerBackgroundSync()
+                }
+                editingGroupId = null
+            },
+            onOpenRoute = { showGroupRoute = true },
+            onBack = { editingGroupId = null }
+        )
+        return
+    }
+
     if (showImportExport) {
         ImportExportScreen(
             trips = trips,
@@ -479,8 +613,9 @@ fun DriveTrackApp(
                 tripCount = filteredTripCount,
                 totalDurationMinutes = filteredTotalDurationMinutes,
                 avgSpeedKmh = filteredAvgSpeedKmh,
-                recentTrips = filteredTrips.take(5),
+                entries = filteredTripListEntries.take(5),
                 onTripClick = { selectedTripId = it.id },
+                onGroupClick = { group -> editingGroupId = group.id },
                 onRenameTrip = { trip, newName ->
                     scope.launch {
                         tripDao.updateTrip(trip.copy(name = newName))
@@ -501,6 +636,7 @@ fun DriveTrackApp(
                 showDashboard = true,
                 isRefreshing = isRefreshing,
                 onRefresh = onManualSync,
+                onCreateGroup = { showGroupPicker = true },
                 modifier = Modifier.padding(padding)
             )
             NavTab.FAHRTEN -> HomeScreen(
@@ -509,8 +645,9 @@ fun DriveTrackApp(
                 tripCount = filteredTripCount,
                 totalDurationMinutes = filteredTotalDurationMinutes,
                 avgSpeedKmh = filteredAvgSpeedKmh,
-                recentTrips = filteredTrips,
+                entries = filteredTripListEntries,
                 onTripClick = { selectedTripId = it.id },
+                onGroupClick = { group -> editingGroupId = group.id },
                 onRenameTrip = { trip, newName ->
                     scope.launch {
                         tripDao.updateTrip(trip.copy(name = newName))
@@ -531,6 +668,7 @@ fun DriveTrackApp(
                 showDashboard = false,
                 isRefreshing = isRefreshing,
                 onRefresh = onManualSync,
+                onCreateGroup = { showGroupPicker = true },
                 modifier = Modifier.padding(padding)
             )
             NavTab.AUFZEICHNEN -> RecordScreen(

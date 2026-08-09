@@ -46,7 +46,7 @@ object MapThumbnailGenerator {
         val points = parsePoints(TrackFileStore.read(context, trip.id))
         if (points.size < 2) return null
 
-        val bitmap = renderThumbnail(points) ?: return null
+        val bitmap = renderThumbnail(listOf(points)) ?: return null
 
         try {
             cacheFile.outputStream().use { out ->
@@ -66,6 +66,44 @@ object MapThumbnailGenerator {
      */
     fun invalidate(context: Context, tripId: Long) {
         File(cacheDir(context), "trip_$tripId.png").delete()
+    }
+
+    /**
+     * Wie getOrCreate(), aber über die kombinierten Routen ALLER Mitgliedsfahrten einer Gruppe
+     * (TripGroupListItem) - jede Fahrt bekommt einen eigenen, unverbundenen Pfad (siehe
+     * renderThumbnail-Kommentar), keine "Teleport"-Linie zwischen dem Ziel einer Fahrt und dem Start
+     * der nächsten. Der Cache-Dateiname enthält die sortierten Fahrt-Ids, damit sich das Bild
+     * automatisch neu aufbaut, sobald sich die Gruppen-Mitgliedschaft ändert (Fahrt hinzugefügt/
+     * entfernt), statt ein veraltetes Bild weiterzuverwenden.
+     */
+    fun getOrCreateForGroup(context: Context, groupId: Long, trips: List<Trip>): Bitmap? {
+        val idsKey = trips.map { it.id }.sorted().joinToString("_")
+        val cacheFile = File(cacheDir(context), "group_${groupId}_$idsKey.png")
+        if (cacheFile.exists()) {
+            BitmapFactory.decodeFile(cacheFile.absolutePath)?.let { return it }
+        }
+
+        val perTripPoints = trips.map { parsePoints(TrackFileStore.read(context, it.id)) }
+            .filter { it.size >= 2 }
+        if (perTripPoints.isEmpty()) return null
+
+        val bitmap = renderThumbnail(perTripPoints) ?: return null
+
+        try {
+            // Cache-Dateien dieser Gruppe mit einer ANDEREN (alten) Mitgliedschaft aufräumen, sonst
+            // sammeln sich verwaiste PNGs an, wenn sich die Fahrtenauswahl öfter ändert.
+            cacheDir(context).listFiles { f -> f.name.startsWith("group_${groupId}_") }?.forEach { it.delete() }
+            cacheFile.outputStream().use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 90, out) }
+        } catch (e: Exception) {
+            // Cache-Schreibfehler ignorieren – Bild trotzdem zurückgeben
+        }
+
+        return bitmap
+    }
+
+    /** Löscht alle gecachten Thumbnails einer Gruppe, z.B. wenn sie komplett gelöscht wird. */
+    fun invalidateGroup(context: Context, groupId: Long) {
+        cacheDir(context).listFiles { f -> f.name.startsWith("group_${groupId}_") }?.forEach { it.delete() }
     }
 
     private fun cacheDir(context: Context): File =
@@ -89,11 +127,19 @@ object MapThumbnailGenerator {
         return (1.0 - ln(tan(latRad) + 1.0 / cos(latRad)) / PI) / 2.0 * (1 shl zoom)
     }
 
-    private fun renderThumbnail(points: List<Pair<Double, Double>>): Bitmap? {
-        val minLat = points.minOf { it.first }
-        val maxLat = points.maxOf { it.first }
-        val minLon = points.minOf { it.second }
-        val maxLon = points.maxOf { it.second }
+    /**
+     * Rendert ein oder mehrere Routen in dasselbe Thumbnail - eine Liste pro Fahrt, damit jede Route
+     * einen eigenen, unverbundenen Pfad bekommt (siehe Zeichen-Schleife unten). Die Kachel-/Zoom-/
+     * Zuschnitt-Berechnung nutzt weiterhin die gemeinsame Bounding-Box ALLER Punkte zusammen, damit
+     * bei mehreren Fahrten (Gruppen-Thumbnail) alle Routen ins Bild passen.
+     */
+    private fun renderThumbnail(tripPointLists: List<List<Pair<Double, Double>>>): Bitmap? {
+        val allPoints = tripPointLists.flatten()
+        if (allPoints.isEmpty()) return null
+        val minLat = allPoints.minOf { it.first }
+        val maxLat = allPoints.maxOf { it.first }
+        val minLon = allPoints.minOf { it.second }
+        val maxLon = allPoints.maxOf { it.second }
 
         // Höchstmöglichen Zoom wählen, der noch in MAX_TILES_PER_AXIS x MAX_TILES_PER_AXIS Kacheln passt
         var zoom = 16
@@ -133,7 +179,11 @@ object MapThumbnailGenerator {
         val adjusted = Bitmap.createBitmap(composite.width, composite.height, Bitmap.Config.ARGB_8888)
         Canvas(adjusted).drawBitmap(composite, 0f, 0f, Paint().apply { colorFilter = buildContrastFilter() })
 
-        // Route in Weltpixel-Koordinaten relativ zur Kachel-Ecke oben links einzeichnen
+        // Route(n) in Weltpixel-Koordinaten relativ zur Kachel-Ecke oben links einzeichnen. Jede
+        // Fahrt bekommt ihren EIGENEN Pfad (moveTo startet pro Fahrt neu) - sonst würde bei mehreren
+        // Fahrten (Gruppen-Thumbnail) eine gerade "Teleport"-Linie zwischen dem Ziel der einen und
+        // dem Start der nächsten Fahrt eingezeichnet, spiegelt dieselbe Überlegung wie
+        // buildGroupSpeedSeries() in TripGeoMath.kt.
         val routePaint = Paint().apply {
             color = Color.parseColor("#FF7A1A")
             strokeWidth = 5f
@@ -142,13 +192,15 @@ object MapThumbnailGenerator {
             strokeJoin = Paint.Join.ROUND
             isAntiAlias = true
         }
-        val path = Path()
-        points.forEachIndexed { i, (lat, lon) ->
-            val px = ((lonToTileX(lon, zoom) - minTileX) * TILE_SIZE).toFloat()
-            val py = ((latToTileY(lat, zoom) - minTileY) * TILE_SIZE).toFloat()
-            if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+        tripPointLists.forEach { points ->
+            val path = Path()
+            points.forEachIndexed { i, (lat, lon) ->
+                val px = ((lonToTileX(lon, zoom) - minTileX) * TILE_SIZE).toFloat()
+                val py = ((latToTileY(lat, zoom) - minTileY) * TILE_SIZE).toFloat()
+                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+            Canvas(adjusted).drawPath(path, routePaint)
         }
-        Canvas(adjusted).drawPath(path, routePaint)
 
         // Auf den tatsächlichen Routen-Ausschnitt zuschneiden (mit etwas Rand)
         val startPx = (lonToTileX(minLon, zoom) - minTileX) * TILE_SIZE

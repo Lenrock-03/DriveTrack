@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
@@ -18,8 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.TripGroup
+import de.kornelriedl.drivetrack.data.TripListEntry
 import de.kornelriedl.drivetrack.ui.components.CarSelector
 import de.kornelriedl.drivetrack.ui.components.StatCard
+import de.kornelriedl.drivetrack.ui.components.TripGroupListItem
 import de.kornelriedl.drivetrack.ui.components.TripListItem
 import de.kornelriedl.drivetrack.ui.components.formatDurationHm
 
@@ -31,8 +35,9 @@ fun HomeScreen(
     tripCount: Int,
     totalDurationMinutes: Long,
     avgSpeedKmh: Double,
-    recentTrips: List<Trip>,
+    entries: List<TripListEntry>,
     onTripClick: (Trip) -> Unit,
+    onGroupClick: (TripGroup) -> Unit,
     onRenameTrip: (Trip, String) -> Unit,
     onDeleteTrip: (Trip) -> Unit,
     cars: List<Car>,
@@ -42,6 +47,7 @@ fun HomeScreen(
     showDashboard: Boolean = true,
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
+    onCreateGroup: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Long-Press-Aktionsmenü: welche Fahrt ist gerade "ausgewählt"
@@ -119,10 +125,23 @@ fun HomeScreen(
         Divider()
         Spacer(modifier = Modifier.height(20.dp))
 
-        Text(
-            text = "Letzte Fahrten:",
-            style = MaterialTheme.typography.titleLarge
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Letzte Fahrten:",
+                style = MaterialTheme.typography.titleLarge
+            )
+            // Nur im Fahrten-Tab (nicht auf dem Dashboard) - Gruppieren ist eine "Verwaltungs"-
+            // Aktion, die auf Home nicht im Weg stehen soll.
+            if (!showDashboard) {
+                IconButton(onClick = onCreateGroup) {
+                    Icon(Icons.Filled.CreateNewFolder, contentDescription = "Fahrten gruppieren")
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -137,7 +156,7 @@ fun HomeScreen(
                 onRefresh = onRefresh,
                 modifier = Modifier.fillMaxSize()
             ) {
-                if (recentTrips.isEmpty()) {
+                if (entries.isEmpty()) {
                     // Muss selbst scrollbar sein, damit die Pull-Geste hier erkannt wird
                     // (PullToRefreshBox braucht einen Scroll-Container als Kind).
                     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -149,12 +168,23 @@ fun HomeScreen(
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(recentTrips) { trip ->
-                            TripListItem(
-                                trip = trip,
-                                onClick = { onTripClick(trip) },
-                                onLongClick = { actionTrip = trip }
-                            )
+                        items(entries) { entry ->
+                            when (entry) {
+                                is TripListEntry.SingleTrip -> TripListItem(
+                                    trip = entry.trip,
+                                    onClick = { onTripClick(entry.trip) },
+                                    onLongClick = { actionTrip = entry.trip }
+                                )
+                                // Gruppen bekommen kein Long-Press-Aktionsmenü hier - Umbenennen/
+                                // Löschen einer Gruppe lebt bewusst im TripGroupDetailScreen, nicht
+                                // auf der zusammengefassten Zeile (vermeidet ein zweites, Gruppen-
+                                // spezifisches Aktionsmenü direkt in dieser Liste).
+                                is TripListEntry.Group -> TripGroupListItem(
+                                    group = entry.group,
+                                    trips = entry.trips,
+                                    onClick = { onGroupClick(entry.group) }
+                                )
+                            }
                         }
                     }
                 }

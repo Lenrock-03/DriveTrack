@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.kornelriedl.drivetrack.data.GraphPoint
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.groupSpeedSeriesClamped
 import de.kornelriedl.drivetrack.data.speedSeriesClamped
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -57,7 +58,65 @@ fun SpeedGraph(
     // sehen solche Ausreißer wie künstliche Nadel-Spitzen statt eines realistischen
     // Geschwindigkeitsverlaufs aus.
     val points = remember(trip.id) { speedSeriesClamped(trip, context) }
+    // Zusätzliche Sicherheitsgrenze: trip.maxSpeedKmh kommt von loc.speed (GPS-Chip, Doppler-
+    // basiert, deutlich robuster als unsere eigene Positions-Differenz-Rechnung) und ist schon in
+    // den Stat-Kacheln zu sehen.
+    val maxSpeed = remember(trip.id) { trip.maxSpeedKmh.toFloat().coerceAtLeast(1f) }
+    SpeedGraphCore(
+        points = points,
+        maxSpeedKmh = maxSpeed,
+        selectionKey = trip.id,
+        onScrub = onScrub,
+        modifier = modifier,
+        markA = markA,
+        markB = markB,
+        highlightRanges = highlightRanges
+    )
+}
 
+/**
+ * Wie SpeedGraph(), aber über die kombinierte Route mehrerer Fahrten einer Gruppe (siehe
+ * TripGroupRouteScreen) - nutzt buildGroupSpeedSeries()/groupSpeedSeriesClamped() statt der
+ * Einzelfahrt-Serie, die Nahtstellen zwischen Fahrten liefern dadurch KEINE künstlichen
+ * Geschwindigkeits-Spitzen (siehe Doc-Kommentar dort). Kein markA/markB/highlightRanges - die
+ * gehören zum Zuschneiden einer einzelnen Fahrt (TripEditScreen), nicht zur Gruppen-Übersicht.
+ */
+@Composable
+fun GroupSpeedGraph(
+    trips: List<Trip>,
+    onScrub: (GraphPoint?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val tripIds = remember(trips) { trips.map { it.id } }
+    val points = remember(tripIds) { groupSpeedSeriesClamped(trips, context) }
+    val maxSpeed = remember(trips) { (trips.maxOfOrNull { it.maxSpeedKmh } ?: 0.0).toFloat().coerceAtLeast(1f) }
+    SpeedGraphCore(
+        points = points,
+        maxSpeedKmh = maxSpeed,
+        selectionKey = tripIds,
+        onScrub = onScrub,
+        modifier = modifier
+    )
+}
+
+/**
+ * Gemeinsamer Zeichen-/Scrub-Kern für SpeedGraph()/GroupSpeedGraph() - nimmt die fertig berechnete
+ * Punktreihe statt sie selbst zu laden, damit dieselbe Canvas-/Gesten-Logik für eine einzelne Fahrt
+ * UND eine kombinierte Gruppen-Serie gilt. `selectionKey` (statt fest trip.id) steuert, wann
+ * selectedIndex/points-abhängiger State zurückgesetzt wird.
+ */
+@Composable
+private fun SpeedGraphCore(
+    points: List<GraphPoint>,
+    maxSpeedKmh: Float,
+    selectionKey: Any,
+    onScrub: (GraphPoint?) -> Unit,
+    modifier: Modifier = Modifier,
+    markA: Long? = null,
+    markB: Long? = null,
+    highlightRanges: List<Pair<Long, Long>> = emptyList()
+) {
     if (points.size < 2) {
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
             Text(
@@ -69,12 +128,8 @@ fun SpeedGraph(
         return
     }
 
-    var selectedIndex by remember(trip.id) { mutableStateOf(points.size - 1) }
-    // Zusätzliche Sicherheitsgrenze: trip.maxSpeedKmh kommt von loc.speed (GPS-Chip, Doppler-
-    // basiert, deutlich robuster als unsere eigene Positions-Differenz-Rechnung) und ist schon in
-    // den Stat-Kacheln zu sehen. scaleMax rundet das für eine lesbare Achsenbeschriftung auf.
-    val maxSpeed = remember(trip.id) { trip.maxSpeedKmh.toFloat().coerceAtLeast(1f) }
-    val scaleMax = remember(maxSpeed) { niceCeilSpeed(maxSpeed) }
+    var selectedIndex by remember(selectionKey) { mutableStateOf(points.size - 1) }
+    val scaleMax = remember(maxSpeedKmh) { niceCeilSpeed(maxSpeedKmh) }
     // points[0].offsetSeconds ist per Konstruktion immer 0 (siehe Trip.toSpeedSeries), daher
     // entspricht der Zeitstempel des ersten Punkts direkt dem Fahrtbeginn dieser (ggf. schon
     // zugeschnittenen) Punktreihe.

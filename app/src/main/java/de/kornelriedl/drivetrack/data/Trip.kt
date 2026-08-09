@@ -24,7 +24,10 @@ data class Trip(
     // Kleines JSON-Array markierter Streckenabschnitte (z.B. Fährüberfahrt), siehe
     // Trip.segmentMarks()/SegmentMark in TripGeoMath.kt. Bewusst normale TEXT-Spalte (nicht wie
     // gpxTrackJson als Datei) - nur wenige kurze Einträge pro Fahrt, kein CursorWindow-Risiko.
-    val segmentMarksJson: String = "[]"
+    val segmentMarksJson: String = "[]",
+    // Manuell erstellte Gruppe mehrerer Fahrten (z.B. "Urlaub Kroatien"), siehe TripGroup.kt -
+    // spiegelt exakt das carId-Muster: ein Trip gehört zu höchstens einer Gruppe.
+    val groupId: Long? = null
 ) {
     // GPS-Punkte (lat,lon,timestamp) als JSON-Array – bewusst KEINE Room-Spalte (daher außerhalb
     // des Konstruktors, @Ignore): einzelne Fahrten (z.B. ganztägig, viele tausend Punkte) sprengen

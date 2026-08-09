@@ -4,6 +4,7 @@ import android.content.Context
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.UserProfile
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.TripGroup
 import de.kornelriedl.drivetrack.data.local.AppDatabase
 import de.kornelriedl.drivetrack.export.BackupExporter
 import kotlinx.coroutines.flow.first
@@ -44,13 +45,20 @@ object ServerSync {
      * veraltet sein) - stattdessen wird danach frisch aus der DB gelesen. Ohne Konflikt werden sie
      * unverändert wie bisher direkt verwendet (spart einen unnötigen Extra-Read im Normalfall).
      */
-    suspend fun syncFullBackupIfPossible(context: Context, users: List<UserProfile>, cars: List<Car>, trips: List<Trip>) {
+    suspend fun syncFullBackupIfPossible(
+        context: Context,
+        users: List<UserProfile>,
+        cars: List<Car>,
+        trips: List<Trip>,
+        groups: List<TripGroup> = emptyList()
+    ) {
         val token = ServerAuthPreferences.getToken(context) ?: return
         val dek = ServerSession.dek ?: return
         try {
             var finalUsers = users
             var finalCars = cars
             var finalTrips = trips
+            var finalGroups = groups
 
             val latest = ServerApi.downloadLatestBackup(token)
             if (latest.success && latest.json != null) {
@@ -69,10 +77,11 @@ object ServerSync {
                     finalUsers = db.userDao().getAllUsers().first()
                     finalCars = db.carDao().getAllCars().first()
                     finalTrips = db.tripDao().getAllTrips().first()
+                    finalGroups = db.tripGroupDao().getAllGroups().first()
                 }
             }
 
-            val json = BackupExporter.buildBackupJson(context, finalUsers, finalCars, finalTrips)
+            val json = BackupExporter.buildBackupJson(context, finalUsers, finalCars, finalTrips, finalGroups)
             val blob = ServerCrypto.encryptWithDek(json, dek)
             val uploadResult = ServerApi.uploadBackup(token, blob.ciphertextBase64, blob.ivBase64)
             if (uploadResult.success) {

@@ -264,8 +264,13 @@ private const val MAX_ROUTE_COLOR_SEGMENTS = 1500
 private const val ROUTE_COLOR_RED_KMH = 130f
 private const val ROUTE_COLOR_PURPLE_KMH = 180f
 
-/** Baut die Route als mehrere kurze, nach Geschwindigkeit eingefärbte Segmente (grün -> rot). */
-private fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
+/**
+ * Baut die Route als mehrere kurze, nach Geschwindigkeit eingefärbte Segmente (grün -> rot). Nicht
+ * private - wird auch von GroupRouteMap.kt wiederverwendet (Geschwindigkeits-Modus über mehrere
+ * Fahrten einer Gruppe hinweg, jede Fahrt einzeln über ihre eigene speedSeriesClamped()-Serie, keine
+ * neue Berechnung nötig).
+ */
+fun buildSpeedColoredSegments(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
     val series = speedSeriesClamped(trip, context)
     if (series.size < 2) return emptyList()
     val step = ((series.size - 1) / MAX_ROUTE_COLOR_SEGMENTS).coerceAtLeast(1)

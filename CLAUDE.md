@@ -22,7 +22,7 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
 
 - **Einstiegspunkt**: `MainActivity.kt` – eine einzige Activity, kein Navigation-Component, Tab-Wechsel
   über simplen Compose-State (`NavTab`-Enum: HOME, FAHRTEN, AUFZEICHNEN, KARTE, EINSTELLUNGEN)
-- **Datenbank**: Room (aktuell Version 7), drei Entities – `Trip`, `Car`, `UserProfile`
+- **Datenbank**: Room (aktuell Version 8), vier Entities – `Trip`, `Car`, `UserProfile`, `TripGroup`
   (siehe `data/`, `data/local/`). Migrationen additiv (`ALTER TABLE ... ADD COLUMN`), NICHT
   vergessen sie in `AppDatabase.addMigrations(...)` einzutragen – `fallbackToDestructiveMigration()`
   ist aktiv, ein Versionsbump ohne registrierte Migration löscht sonst kommentarlos alle Daten
@@ -95,6 +95,49 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   - "Fahrzeit"-Kacheln auf Home-Dashboard/`CarDetailScreen` nutzen seit 0.8.0
     `Trip.drivingDurationMinutes` statt der reinen Gesamtdauer (für Fahrten ohne Pause-Schnitt
     identisches Ergebnis wie vorher).
+- **Fahrten gruppieren** (seit 0.13.0): manuelle Zusammenfassung mehrerer Fahrten (z. B. "Urlaub
+  Kroatien") zu einer `TripGroup` (`data/TripGroup.kt`, `data/local/TripGroupDao.kt`) - EIN Trip
+  gehört zu höchstens einer Gruppe (nullable `Trip.groupId`, spiegelt exakt das bestehende
+  `carId`-Muster, keine Junction-Tabelle). `data/TripGrouping.kt::buildTripListEntries()` baut aus
+  Fahrten + Gruppen eine gemischte, nach der jeweils neuesten Fahrt sortierte Liste
+  (`TripListEntry.SingleTrip`/`.Group`) für `HomeScreen` - eine Gruppe erscheint dort als EIN
+  zusammengefasster Eintrag (`ui/components/TripGroupListItem.kt`) statt einzeln; leere Gruppen
+  (letzte Fahrt entfernt) werden dabei herausgefiltert, aber nicht automatisch gelöscht.
+  `List<Trip>.groupStats()` aggregiert dieselbe Formel wie Home-Dashboard/`CarDetailScreen` schon
+  immer (Summe km/Fahrzeit, Ø-/Max-Geschwindigkeit) - keine neue Rechenmethode.
+  - `ui/screens/TripGroupDetailScreen.kt`: Statistik-Kacheln, Mitgliedsfahrten-Liste (Tap öffnet
+    normale `TripDetailScreen`, Zurück-Halten entfernt nur aus der Gruppe - setzt nur
+    `groupId = null`, löscht die Fahrt nie), "Fahrten hinzufügen" (öffnet
+    `ui/screens/TripGroupPickerScreen.kt` im Hinzufügen-Modus - Fahrten aus einer ANDEREN Gruppe
+    zeigen dort ein Badge, Auswahl verschiebt sie), "Gruppe löschen" (setzt `groupId` aller
+    Mitglieder zurück, bevor die `TripGroup`-Zeile selbst gelöscht wird). Umbenennen läuft NICHT
+    inline, sondern über den Stift-Button in der TopAppBar + einen eigenen Dialog (spiegelt
+    HomeScreens "Fahrt umbenennen"-Dialog) - bewusst kein dauerhaft sichtbares Textfeld wie bei
+    `CarDetailScreen`.
+  - Übersichtskarte mit der kombinierten Route aller Mitgliedsfahrten
+    (`ui/components/GroupRouteMap.kt`) - als kleine, bewusst NICHT interaktive Vorschau (sonst
+    "klaut" jede Berührung die Kamera-Pan-Geste von osmdroid, noch bevor ein Klick irgendwo
+    ankommt; `interactive = false` setzt zusätzlich zu `setMultiTouchControls(false)` einen
+    `setOnTouchListener { _, _ -> true }`, da MapViews Pan-Erkennung unabhängig davon läuft) sowohl
+    in der Fahrtenliste (`TripGroupListItem`, Gruppen-Symbol nur noch als kleines Badge unten
+    links, spiegelt das Label-Icon-Badge einer einzelnen Fahrt) als auch in
+    `TripGroupDetailScreen` (dort mit eigenem Vergrößerungs-Icon statt Kartenklick, öffnet
+    `ui/screens/TripGroupRouteScreen.kt` - Vollbild-Karte inkl. Standard-/Geschwindigkeitsfarb-
+    Umschalter+Legende wie bei einer einzelnen Fahrt, plus kombinierter Geschwindigkeits-Graph).
+    Mini-Thumbnails werden wie bei einer einzelnen Fahrt über `MapThumbnailGenerator` gerendert und
+    gecacht (`getOrCreateForGroup()`, Cache-Dateiname enthält die sortierten Fahrt-Ids, baut sich
+    also automatisch neu auf, sobald sich die Mitgliedschaft ändert - zusätzlich explizit
+    invalidiert nach einem Zuschnitt einer Mitgliedsfahrt, siehe `onApplyTripEdit` in
+    `MainActivity.kt`, und beim Löschen der Gruppe selbst).
+  - **Nahtstellen-Falle beim Kombinieren mehrerer Fahrten**: sowohl der kombinierte
+    Geschwindigkeits-Graph (`data/TripGeoMath.kt::buildGroupSpeedSeries()`) als auch das kombinierte
+    Mini-Thumbnail (`MapThumbnailGenerator::renderThumbnail()`) behandeln jede Fahrt als eigenen,
+    unverbundenen "Lauf" (spiegelt dieselbe Idee wie `applyTripEditPlan()`s Pausen-Schnitte) -
+    Distanz/Geschwindigkeit werden NIE zwischen dem letzten Punkt einer Fahrt und dem ersten Punkt
+    der nächsten berechnet, sonst würde die (oft riesige, über Tage hinweg gemessene) Luftlinien-
+    "Geschwindigkeit" zwischen zwei Fahrten als astronomischer Ausreißer im Graphen/als gerade
+    "Teleport"-Linie auf der Karte erscheinen. `offsetSeconds`/`cumulativeKm` im Graphen laufen
+    trotzdem durchgehend weiter (keine echte Kalenderzeit-Lücke zwischen den Fahrten sichtbar).
 - **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt`
 - **Einstellungen** (seit 0.5.0): `ui/screens/SettingsScreen.kt` ist nur noch der Einstiegspunkt
   (Konto/Fahrzeuge/Daten/Über, ~200 Zeilen), mit gemeinsamer `SettingsSectionCard`/`SettingsNavCard`
@@ -141,11 +184,14 @@ Kompletter Code in `data/server/`:
 - UI: `ui/screens/ServerBackupScreen.kt` (Login/Registrieren/Entsperren/Sichern/Wiederherstellen/Passwort vergessen) –
   bleibt als manueller Fallback bestehen, wird durch Auto-Sync aber seltener gebraucht
 
-Backup-JSON-Struktur (muss mit Backend + Web-App übereinstimmen): `{ version, users[], cars[], trips[] }`,
-gebaut von `export/BackupExporter.kt` (`buildBackupJson()` / `importBackupFromJson()`). Neue
-Trip-Felder (z. B. `labels`/`pausedMinutes`/`segmentMarksJson` seit 0.8.0) werden additiv ergänzt und
-beim Import defensiv gelesen (`optLong`/`optString`/`isNull`-Prüfung) – alte Backups ohne diese
-Schlüssel bleiben importierbar. Das Backend speichert das Backup nur als E2E-verschlüsselten Blob
+Backup-JSON-Struktur (muss mit Backend + Web-App übereinstimmen): `{ version, users[], cars[], trips[], groups[] }`
+(`groups[]` seit 0.13.0, jeweils `{id, name}`, Trips bekommen zusätzlich ein nullable `groupId`,
+serialisiert wie `carId`), gebaut von `export/BackupExporter.kt` (`buildBackupJson()` /
+`importBackupFromJson()`). Neue Trip-Felder (z. B. `labels`/`pausedMinutes`/`segmentMarksJson` seit
+0.8.0) werden additiv ergänzt und beim Import defensiv gelesen (`optLong`/`optString`/
+`isNull`-Prüfung) – alte Backups ohne diese Schlüssel bleiben importierbar. `groupId` wird beim
+Import/Restore über eine `groupIdMap` übersetzt (Gruppen nach Name abgeglichen, neu angelegt falls
+unbekannt) – exakt dasselbe Muster wie die bestehende `carIdMap`/`userIdMap`. Das Backend speichert das Backup nur als E2E-verschlüsselten Blob
 (sieht die Feldstruktur nie im Klartext), die Web-App ignoriert unbekannte JSON-Schlüssel beim
 Parsen – rein additive Trip-Felder brauchen deshalb **keine** Backend-/Web-Änderung.
 

@@ -8,14 +8,16 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.TripGroup
 import de.kornelriedl.drivetrack.data.UserProfile
 import java.io.File
 
-@Database(entities = [Trip::class, Car::class, UserProfile::class], version = 7, exportSchema = false)
+@Database(entities = [Trip::class, Car::class, UserProfile::class, TripGroup::class], version = 8, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
     abstract fun carDao(): CarDao
     abstract fun userDao(): UserDao
+    abstract fun tripGroupDao(): TripGroupDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null
@@ -27,7 +29,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "drivetrack.db"
                 )
-                    .addMigrations(migration3to4(context.applicationContext), migration4to5, migration5to6, migration6to7)
+                    .addMigrations(migration3to4(context.applicationContext), migration4to5, migration5to6, migration6to7, migration7to8)
                     // Kein echtes Migrations-Skript nötig für eine unveröffentlichte Dev-App –
                     // baut die lokale DB bei sonstigen Schemaänderungen einfach sauber neu auf.
                     // (Für den gpxTrackJson-Umzug oben aber bewusst NICHT destruktiv, um
@@ -117,6 +119,25 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE trips ADD COLUMN labels TEXT")
                 db.execSQL("ALTER TABLE trips ADD COLUMN pausedMinutes INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE trips ADD COLUMN segmentMarksJson TEXT NOT NULL DEFAULT '[]'")
+            }
+        }
+
+        /**
+         * Neue Tabelle für manuell erstellte Fahrten-Gruppen (z.B. "Urlaub Kroatien") + neue,
+         * nullbare Spalte an "trips" für die Zuordnung - bestehende Fahrten bleiben erhalten,
+         * Default `groupId = NULL` entspricht "noch keiner Gruppe zugeordnet".
+         */
+        private val migration7to8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS trip_groups (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("ALTER TABLE trips ADD COLUMN groupId INTEGER")
             }
         }
     }

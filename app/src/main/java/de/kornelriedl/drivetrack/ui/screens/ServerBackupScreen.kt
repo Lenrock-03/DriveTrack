@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.TripGroup
 import de.kornelriedl.drivetrack.data.UserProfile
 import de.kornelriedl.drivetrack.data.server.ServerApi
 import de.kornelriedl.drivetrack.data.server.ServerAuthPreferences
@@ -36,6 +37,7 @@ fun ServerBackupScreen(
     users: List<UserProfile>,
     cars: List<Car>,
     trips: List<Trip>,
+    groups: List<TripGroup>,
     onImportComplete: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -277,7 +279,7 @@ fun ServerBackupScreen(
                                 isLoading = false
                                 return@launch
                             }
-                            val json = BackupExporter.buildBackupJson(context, users, cars, trips)
+                            val json = BackupExporter.buildBackupJson(context, users, cars, trips, groups)
                             val blob = withContext(Dispatchers.Default) {
                                 ServerCrypto.encryptWithDek(json, dek)
                             }

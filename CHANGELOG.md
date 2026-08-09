@@ -5,6 +5,30 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.13.0] - 2026-08-09
+
+### Hinzugefügt
+- **Fahrten gruppieren**: Fahrten lassen sich manuell zu einer Gruppe zusammenfassen (z. B.
+  "Urlaub Kroatien" aus mehreren Einzelfahrten). Über das neue Ordner-Icon neben "Letzte Fahrten:"
+  im Fahrten-Tab öffnet sich ein Auswahl-Screen zum Erstellen einer neuen Gruppe; eine Gruppe
+  erscheint danach als EIN zusammengefasster Eintrag in der Fahrtenliste statt einzeln.
+  - Gruppen-Detailseite: Gesamt-Statistik über alle Mitgliedsfahrten (km, Fahrten, Fahrzeit, Ø/Max
+    Geschwindigkeit), Liste der einzelnen Fahrten (Antippen öffnet die normale Fahrt-Detailseite
+    wie gewohnt, Zurück-Halten entfernt nur aus der Gruppe, löscht die Fahrt nicht), "Fahrten
+    hinzufügen" (Fahrten, die bereits einer anderen Gruppe angehören, zeigen dort ein Badge -
+    Auswahl verschiebt sie, da eine Fahrt nur in einer Gruppe sein kann), "Gruppe löschen"
+    (Mitgliedsfahrten bleiben erhalten und erscheinen danach wieder einzeln in der Liste). Name
+    wird über den Stift-Button in der Kopfzeile umbenannt (eigener Dialog, nicht inline).
+  - Übersichtskarte mit der kombinierten Route aller Mitgliedsfahrten, als Mini-Vorschau sowohl in
+    der Fahrtenliste als auch in der Gruppen-Detailseite (echte Kartenkacheln + eingezeichnete
+    Routen, genau wie bei einer einzelnen Fahrt) - ein Vergrößerungs-Icon öffnet eine Vollbild-
+    Ansicht mit derselben Karte (inkl. Umschalter Standard-/Geschwindigkeitsfarbe + Legende, wie
+    bei einer einzelnen Fahrt) und einem kombinierten Geschwindigkeits-Graphen über alle Fahrten.
+    Die Geschwindigkeit wird dabei NIE über die Nahtstelle zwischen zwei Fahrten hinweg berechnet
+    (keine "Teleport"-Ausreißer zwischen dem Ziel der einen und dem Start der nächsten Fahrt).
+- Server-Backup/lokales Backup um Gruppen erweitert (additiv, alte Backups ohne Gruppen bleiben
+  importierbar) - Gruppen synchronisieren sich über alle Geräte wie Fahrten/Autos auch.
+
 ## [0.12.1] - 2026-08-09
 
 ### Behoben

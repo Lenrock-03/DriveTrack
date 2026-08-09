@@ -223,15 +223,23 @@ fun DriveTrackApp(
     val filteredTotalDurationMinutes = filteredTrips.sumOf { it.drivingDurationMinutes }
     val filteredAvgSpeedKmh = if (filteredTrips.isNotEmpty()) filteredTrips.map { it.avgSpeedKmh }.average() else 0.0
 
-    var selectedTrip by remember { mutableStateOf<Trip?>(null) }
+    // Nur die Id merken, nicht das Trip-Objekt - TripDetailScreen liest die aktuelle Fahrt live aus
+    // dem trips-Flow (wie editingCarId/editingTripId), damit Änderungen (Umbenennen, Zuschneiden,
+    // Labels/Markierungen speichern, ...) sofort sichtbar sind, sobald man zurücknavigiert, statt
+    // eine beim Öffnen eingefrorene Kopie anzuzeigen.
+    var selectedTripId by remember { mutableStateOf<Long?>(null) }
     var showServerBackup by remember { mutableStateOf(false) }
     var showImportExport by remember { mutableStateOf(false) }
     // Nur die Id merken, nicht das Trip-Objekt - TripEditScreen liest die aktuelle Fahrt live aus
     // dem trips-Flow (Muster identisch zu editingCarId oben).
     var editingTripId by remember { mutableStateOf<Long?>(null) }
-    val onApplyTripEdit: (Trip, TripEditPlan) -> Unit = { trip, plan ->
+    // Labels/Markierungen werden mit übergeben (nicht nur der Zuschneide-Plan), damit noch nicht
+    // gespeicherte Änderungen aus TripEditScreen beim Anwenden eines Zuschnitts nicht verloren gehen
+    // (siehe TripEditScreen-Doc-Kommentar).
+    val onApplyTripEdit: (Trip, TripEditPlan, List<String>, List<SegmentMark>) -> Unit = { trip, plan, labels, marks ->
         scope.launch {
-            val outcome = withContext(Dispatchers.IO) { applyTripEditPlan(trip, context, plan) }
+            val tripWithPendingMetadata = trip.copy(labels = labels.toLabelsString(), segmentMarksJson = marks.toJson())
+            val outcome = withContext(Dispatchers.IO) { applyTripEditPlan(tripWithPendingMetadata, context, plan) }
             if (outcome != null) {
                 tripDao.updateTrip(outcome.trip)
                 withContext(Dispatchers.IO) {
@@ -244,21 +252,13 @@ fun DriveTrackApp(
             editingTripId = null
         }
     }
-    val onUpdateTripLabels: (Trip, List<String>) -> Unit = { trip, labels ->
-        scope.launch { tripDao.updateTrip(trip.copy(labels = labels.toLabelsString())) }
-    }
-    val onAddTripSegmentMark: (Trip, SegmentMark) -> Unit = { trip, mark ->
+    // Ein einziger Schreibvorgang für Labels + Markierungen (statt einer pro Häkchen/Chip wie vor
+    // 0.10.0) - TripEditScreen sammelt beides lokal und ruft das erst beim Verlassen/Speichern auf.
+    val onSaveTripMetadata: (Trip, List<String>, List<SegmentMark>) -> Unit = { trip, labels, marks ->
         scope.launch {
-            val updated = trip.segmentMarks() + mark
-            val newMax = withContext(Dispatchers.IO) { recomputeMaxSpeedExcludingMarks(trip, context, updated) }
-            tripDao.updateTrip(trip.copy(segmentMarksJson = updated.toJson(), maxSpeedKmh = newMax))
-        }
-    }
-    val onDeleteTripSegmentMark: (Trip, SegmentMark) -> Unit = { trip, mark ->
-        scope.launch {
-            val updated = trip.segmentMarks() - mark
-            val newMax = withContext(Dispatchers.IO) { recomputeMaxSpeedExcludingMarks(trip, context, updated) }
-            tripDao.updateTrip(trip.copy(segmentMarksJson = updated.toJson(), maxSpeedKmh = newMax))
+            val newMax = withContext(Dispatchers.IO) { recomputeMaxSpeedExcludingMarks(trip, context, marks) }
+            tripDao.updateTrip(trip.copy(labels = labels.toLabelsString(), segmentMarksJson = marks.toJson(), maxSpeedKmh = newMax))
+            editingTripId = null
         }
     }
 
@@ -305,13 +305,16 @@ fun DriveTrackApp(
         }
     }
 
-    // System-"Zurück"-Taste: im Detail-Screen zurück zur Liste statt App schließen
+    // System-"Zurück"-Taste: im Detail-Screen zurück zur Liste statt App schließen. editingTripId
+    // absichtlich NICHT hier behandelt: TripEditScreen registriert dafür seinen eigenen BackHandler
+    // (Rückfrage bei ungespeicherten Änderungen) - der zuletzt registrierte/aktive BackHandler hat
+    // in Compose automatisch Vorrang, dieser Handler wird also nie für editingTripId aufgerufen,
+    // solange TripEditScreen angezeigt wird.
     BackHandler(
-        enabled = selectedTrip != null || showServerBackup || editingCarId != null || showImportExport || editingTripId != null
+        enabled = selectedTripId != null || showServerBackup || editingCarId != null || showImportExport
     ) {
         when {
-            editingTripId != null -> editingTripId = null
-            selectedTrip != null -> selectedTrip = null
+            selectedTripId != null -> selectedTripId = null
             editingCarId != null -> editingCarId = null
             showImportExport -> showImportExport = false
             else -> showServerBackup = false
@@ -323,7 +326,7 @@ fun DriveTrackApp(
     val activity = context as? android.app.Activity
     var backPressedOnce by remember { mutableStateOf(false) }
     BackHandler(
-        enabled = selectedTrip == null && !showServerBackup && editingCarId == null && !showImportExport && editingTripId == null
+        enabled = selectedTripId == null && !showServerBackup && editingCarId == null && !showImportExport && editingTripId == null
     ) {
         when {
             currentTab != NavTab.HOME -> {
@@ -343,32 +346,32 @@ fun DriveTrackApp(
         }
     }
 
-    // Vor dem selectedTrip-Block geprüft: liegt "über" der Detailseite (die bleibt währenddessen
+    // Vor dem selectedTripId-Block geprüft: liegt "über" der Detailseite (die bleibt währenddessen
     // gesetzt) und springt beim Anwenden/Zurück wieder dorthin zurück, nicht bis auf Home.
     val currentEditingTrip = trips.find { it.id == editingTripId }
     if (currentEditingTrip != null) {
         TripEditScreen(
             trip = currentEditingTrip,
             onBack = { editingTripId = null },
-            onApplyEdit = { plan -> onApplyTripEdit(currentEditingTrip, plan) },
-            onUpdateLabels = { labels -> onUpdateTripLabels(currentEditingTrip, labels) },
-            onAddSegmentMark = { mark -> onAddTripSegmentMark(currentEditingTrip, mark) },
-            onDeleteSegmentMark = { mark -> onDeleteTripSegmentMark(currentEditingTrip, mark) }
+            onApplyEdit = { plan, labels, marks -> onApplyTripEdit(currentEditingTrip, plan, labels, marks) },
+            onSaveAndClose = { labels, marks -> onSaveTripMetadata(currentEditingTrip, labels, marks) }
         )
         return
     }
 
-    val currentSelectedTrip = selectedTrip
+    // Live aus dem trips-Flow abgeleitet statt eine beim Antippen eingefrorene Kopie zu halten -
+    // dadurch sind Änderungen aus TripEditScreen (Zuschneiden, Labels/Markierungen speichern) sofort
+    // sichtbar, sobald man dorthin zurückkehrt, ohne die Anzeige manuell nachpflegen zu müssen.
+    val currentSelectedTrip = trips.find { it.id == selectedTripId }
     if (currentSelectedTrip != null) {
         TripDetailScreen(
             trip = currentSelectedTrip,
             cars = cars,
             onChangeCar = { trip, newCarId ->
                 scope.launch { tripDao.updateTrip(trip.copy(carId = newCarId)) }
-                selectedTrip = trip.copy(carId = newCarId)
             },
             onEdit = { editingTripId = currentSelectedTrip.id },
-            onBack = { selectedTrip = null }
+            onBack = { selectedTripId = null }
         )
         return
     }
@@ -430,7 +433,7 @@ fun DriveTrackApp(
                 totalDurationMinutes = filteredTotalDurationMinutes,
                 avgSpeedKmh = filteredAvgSpeedKmh,
                 recentTrips = filteredTrips.take(5),
-                onTripClick = { selectedTrip = it },
+                onTripClick = { selectedTripId = it.id },
                 onRenameTrip = { trip, newName ->
                     scope.launch { tripDao.updateTrip(trip.copy(name = newName)) }
                 },
@@ -454,7 +457,7 @@ fun DriveTrackApp(
                 totalDurationMinutes = filteredTotalDurationMinutes,
                 avgSpeedKmh = filteredAvgSpeedKmh,
                 recentTrips = filteredTrips,
-                onTripClick = { selectedTrip = it },
+                onTripClick = { selectedTripId = it.id },
                 onRenameTrip = { trip, newName ->
                     scope.launch { tripDao.updateTrip(trip.copy(name = newName)) }
                 },

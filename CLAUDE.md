@@ -46,7 +46,13 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   Compose-frei in `data/TripGeoMath.kt`.
 - **Fahrten bearbeiten** (seit 0.8.0): `ui/screens/TripEditScreen.kt`, erreichbar über den Stift-
   Button in `TripDetailScreen`s TopAppBar (`MainActivity`-State `editingTripId`, gleiches Muster wie
-  `editingCarId` – liegt "über" der Detailseite, `selectedTrip` bleibt währenddessen gesetzt).
+  `editingCarId` – liegt "über" der Detailseite, `selectedTripId` bleibt währenddessen gesetzt).
+  `MainActivity` hält seit 0.10.0 nur noch `selectedTripId: Long?` (nicht mehr das `Trip`-Objekt
+  selbst) und liest die Fahrt für `TripDetailScreen` live aus dem `trips`-Flow (`trips.find { it.id
+  == selectedTripId }`, analog zu `editingCarId`/`editingTripId`) – dadurch sind alle Änderungen
+  (Umbenennen, Auto zuordnen, Zuschneiden, Labels/Markierungen speichern) sofort nach dem
+  Zurücknavigieren sichtbar, ohne den angezeigten Trip manuell nachzupflegen (vorher pro Aktion
+  einzeln nötig, z. B. `selectedTrip = trip.copy(...)`, war leicht zu vergessen).
   Bedienung: im wiederverwendeten `SpeedGraph` scrubben, "Punkt A/B setzen" merkt sich den jeweils
   aktuell gescrubbten Zeitstempel (`SpeedGraph.onScrub` liefert seit 0.8.0 den vollen `GraphPoint`
   statt nur Lat/Lon, damit der Zeitstempel verfügbar ist). Zwei Kategorien von Änderungen:
@@ -61,7 +67,7 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
     Schnittlücke hinweg summiert wird. Nach jedem Schnitt wird
     `MapThumbnailGenerator.invalidate()` aufgerufen (sonst zeigt die Fahrtenliste ein veraltetes
     Vorschaubild).
-  - **Markieren** (nicht-destruktiv, sofort gespeichert): Fahrt-Labels (`Trip.labels`, kommagetrennt,
+  - **Markieren** (nicht-destruktiv): Fahrt-Labels (`Trip.labels`, kommagetrennt,
     Presets wie "⛴ Fähre" + Freitext) als Badges in `TripListItem`/`TripDetailScreen`, und
     Streckenabschnitts-Markierungen (`Trip.segmentMarksJson`, `SegmentMark(label, startTs, endTs)`)
     als gestrichelte Linie auf der Karte (`RouteDetailMap`) in einer je Typ festen Farbe
@@ -73,7 +79,17 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
     Statistik je Abschnitt (`Trip.segmentStats()` – Distanz/Dauer/Ø-/Höchstgeschwindigkeit nur
     innerhalb des markierten Zeitraums), angezeigt über die gemeinsame Komponente
     `ui/components/SegmentMarkRow.kt` (genutzt von `TripDetailScreen` read-only und `TripEditScreen`
-    mit Lösch-Button).
+    mit Lösch-Button). Seit 0.10.0 nicht mehr sofort gespeichert, sondern nur lokaler Bildschirm-
+    State (`pendingLabels`/`pendingMarks`) bis zum Verlassen des Screens: `TripEditScreen` registriert
+    einen eigenen `BackHandler` (überschreibt automatisch `MainActivity`s äußeren Handler, solange
+    der Screen sichtbar ist – Compose gibt dem zuletzt registrierten aktiven `BackHandler` Vorrang),
+    der bei ungespeicherten Änderungen "Änderungen speichern?" nachfragt (Speichern/Verwerfen) statt
+    direkt zurückzunavigieren. "Speichern" schreibt Labels+Markierungen in einem einzigen
+    `tripDao.updateTrip()` (`onSaveTripMetadata` in `MainActivity`, ersetzt die früheren
+    Einzel-Callbacks `onUpdateLabels`/`onAddSegmentMark`/`onDeleteSegmentMark`). Damit beim
+    "Änderungen anwenden" für Zuschnitte keine noch nicht gespeicherten Label-/Markierungs-Änderungen
+    verloren gehen, werden `pendingLabels`/`pendingMarks` dort ebenfalls mit übergeben und vor
+    `applyTripEditPlan()` in die Fahrt gemerged.
   - "Fahrzeit"-Kacheln auf Home-Dashboard/`CarDetailScreen` nutzen seit 0.8.0
     `Trip.drivingDurationMinutes` statt der reinen Gesamtdauer (für Fahrten ohne Pause-Schnitt
     identisches Ergebnis wie vorher).

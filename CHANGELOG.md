@@ -5,6 +5,19 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.10.0] - 2026-08-09
+
+### Geändert
+- Labels und markierte Streckenabschnitte im Bearbeiten-Screen werden nicht mehr sofort bei jedem
+  Antippen gespeichert, sondern erst beim Verlassen der Seite (Zurück-Pfeil oder System-Zurück-
+  Taste): bei ungespeicherten Änderungen fragt ein Dialog "Änderungen speichern?" nach. Nach
+  "Speichern" sind die Änderungen sofort auf der Fahrt-Detailseite sichtbar – dafür liest diese
+  (wie schon Fahrzeug-Bearbeiten) die aktuelle Fahrt jetzt live aus der Datenbank statt eine beim
+  Öffnen eingefrorene Kopie anzuzeigen (betraf bisher auch das Zuschneiden: nach "Änderungen
+  anwenden" zeigte die Detailseite kurzzeitig noch die alten Werte).
+- Fahrtenliste: Labels einer Fahrt (z. B. "⛴ Fähre") erscheinen jetzt zusätzlich als kleines
+  Icon-Badge direkt auf der Karten-Vorschau statt nur als Text darunter.
+
 ## [0.9.0] - 2026-08-09
 
 ### Hinzugefügt

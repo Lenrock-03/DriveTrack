@@ -154,5 +154,25 @@ private fun RouteThumbnail(trip: Trip, modifier: Modifier = Modifier) {
                 tint = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
+
+        val labels = trip.labelList()
+        if (labels.isNotEmpty()) {
+            // Nur die Icons (kein Text, kein Platz auf 56dp) als kleines Badge unten links auf der
+            // Kachel selbst - zusätzlich zur Textzeile unten in der Card, damit man den Fahrt-Typ
+            // schon beim Scrollen an der Karte erkennt, nicht erst beim Lesen des Texts.
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(3.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 3.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = labels.map { labelIcon(it) }.distinct().joinToString(""),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
     }
 }

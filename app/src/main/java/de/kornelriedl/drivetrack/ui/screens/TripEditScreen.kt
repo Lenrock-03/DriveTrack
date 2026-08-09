@@ -1,5 +1,6 @@
 package de.kornelriedl.drivetrack.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -46,19 +47,25 @@ private sealed class PendingAction {
 
 /**
  * "Bearbeiten"-Menü einer Fahrt: Zuschneiden (Anfang/Ende kürzen, Pause in der Mitte entfernen) und
- * Markieren (Fahrt-Labels + Streckenabschnitte, z.B. eine Fährüberfahrt). Zuschneiden ist
- * destruktiv (Punkte werden endgültig entfernt) und läuft über eine einsehbare Änderungsliste +
- * Bestätigungsdialog; Labels/Markierungen sind reine Metadaten und werden sofort gespeichert.
+ * Markieren (Fahrt-Labels + Streckenabschnitte, z.B. eine Fährüberfahrt).
+ *
+ * Labels/Markierungen sind zunächst nur lokaler Bildschirm-State (`pendingLabels`/`pendingMarks`) -
+ * NICHT sofort gespeichert. Erst beim Verlassen (Zurück-Pfeil oder System-Zurück-Taste, beide über
+ * `attemptBack()`) wird bei ungespeicherten Änderungen nachgefragt ("Änderungen speichern?"); ein
+ * Bestätigen schreibt beides in einem Rutsch über `onSaveAndClose` in die DB, bevor der Screen
+ * schließt (Reihenfolge wichtig, damit die Änderung sofort auf der Detailseite sichtbar ist).
+ * Zuschneiden bleibt separat: destruktiv (Punkte werden endgültig entfernt), läuft über eine
+ * einsehbare Änderungsliste + eigenen Bestätigungsdialog ("Änderungen anwenden"). Damit dabei keine
+ * noch nicht gespeicherten Label-/Markierungs-Änderungen verloren gehen, werden sie beim Anwenden
+ * eines Zuschnitts ebenfalls mit übergeben (siehe onApplyEdit-Signatur).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripEditScreen(
     trip: Trip,
     onBack: () -> Unit,
-    onApplyEdit: (TripEditPlan) -> Unit,
-    onUpdateLabels: (List<String>) -> Unit,
-    onAddSegmentMark: (SegmentMark) -> Unit,
-    onDeleteSegmentMark: (SegmentMark) -> Unit
+    onApplyEdit: (TripEditPlan, List<String>, List<SegmentMark>) -> Unit,
+    onSaveAndClose: (List<String>, List<SegmentMark>) -> Unit
 ) {
     val timeFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.GERMANY) }
     fun fmt(ts: Long) = timeFormat.format(Date(ts))
@@ -71,16 +78,27 @@ fun TripEditScreen(
     var showApplyConfirm by remember { mutableStateOf(false) }
     var showCustomLabelDialog by remember { mutableStateOf(false) }
     var showMarkDialog by remember { mutableStateOf(false) }
+    var showUnsavedDialog by remember { mutableStateOf(false) }
 
-    val existingMarks = trip.segmentMarks()
-    val labels = trip.labelList()
+    // Lokaler Entwurf, bis explizit gespeichert wird (siehe Doc-Kommentar oben) - an trip.id
+    // gebunden, damit ein Reset passiert, falls je eine andere Fahrt in denselben Screen geladen wird.
+    var pendingLabels by remember(trip.id) { mutableStateOf(trip.labelList()) }
+    var pendingMarks by remember(trip.id) { mutableStateOf(trip.segmentMarks()) }
+
+    val hasUnsavedMetadata = pendingLabels != trip.labelList() || pendingMarks != trip.segmentMarks()
+    val hasUnappliedCuts = pendingActions.isNotEmpty()
+
+    val attemptBack: () -> Unit = {
+        if (hasUnsavedMetadata || hasUnappliedCuts) showUnsavedDialog = true else onBack()
+    }
+    BackHandler(onBack = attemptBack)
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Fahrt bearbeiten") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = attemptBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Zurück")
                     }
                 }
@@ -97,28 +115,27 @@ fun TripEditScreen(
             Text("Markieren", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Labels für die ganze Fahrt, sofort gespeichert.",
+                "Labels für die ganze Fahrt - werden beim Verlassen dieser Seite gespeichert.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(8.dp))
             FlowChipsRow {
                 LABEL_PRESETS.forEach { preset ->
-                    val active = labels.contains(preset)
+                    val active = pendingLabels.contains(preset)
                     LabelChip(
                         text = preset,
                         selected = active,
                         onClick = {
-                            val updated = if (active) labels - preset else labels + preset
-                            onUpdateLabels(updated)
+                            pendingLabels = if (active) pendingLabels - preset else pendingLabels + preset
                         }
                     )
                 }
-                labels.filter { it !in LABEL_PRESETS }.forEach { custom ->
+                pendingLabels.filter { it !in LABEL_PRESETS }.forEach { custom ->
                     LabelChip(
                         text = "${labelIcon(custom)} $custom",
                         selected = true,
-                        onClick = { onUpdateLabels(labels - custom) }
+                        onClick = { pendingLabels = pendingLabels - custom }
                     )
                 }
                 LabelChip(text = "+ eigenes Label", selected = false, onClick = { showCustomLabelDialog = true })
@@ -143,7 +160,7 @@ fun TripEditScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             val pendingHighlights = pendingActions.filterIsInstance<PendingAction.Cut>().map { it.start to it.end }
-            val markHighlights = existingMarks.map { it.startTs to it.endTs }
+            val markHighlights = pendingMarks.map { it.startTs to it.endTs }
             Box(modifier = Modifier.fillMaxWidth().height(160.dp)) {
                 SpeedGraph(
                     trip = trip,
@@ -264,7 +281,7 @@ fun TripEditScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("A–B als Abschnitt markieren…") }
 
-            if (existingMarks.isNotEmpty()) {
+            if (pendingMarks.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     "Markierte Abschnitte",
@@ -272,11 +289,11 @@ fun TripEditScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                existingMarks.forEach { mark ->
+                pendingMarks.forEach { mark ->
                     SegmentMarkRow(
                         trip = trip,
                         mark = mark,
-                        onDelete = { onDeleteSegmentMark(mark) },
+                        onDelete = { pendingMarks = pendingMarks - mark },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(6.dp))
@@ -291,7 +308,7 @@ fun TripEditScreen(
         LabelInputDialog(
             title = "Eigenes Label",
             onConfirm = { text ->
-                if (text.isNotBlank()) onUpdateLabels(labels + text.trim())
+                if (text.isNotBlank()) pendingLabels = pendingLabels + text.trim()
                 showCustomLabelDialog = false
             },
             onDismiss = { showCustomLabelDialog = false }
@@ -321,7 +338,7 @@ fun TripEditScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        onAddSegmentMark(SegmentMark(preset, start, end))
+                                        pendingMarks = pendingMarks + SegmentMark(preset, start, end)
                                         showMarkDialog = false
                                     }
                                     .padding(vertical = 10.dp)
@@ -338,7 +355,7 @@ fun TripEditScreen(
                         TextButton(
                             onClick = {
                                 if (customText.isNotBlank()) {
-                                    onAddSegmentMark(SegmentMark(customText.trim(), start, end))
+                                    pendingMarks = pendingMarks + SegmentMark(customText.trim(), start, end)
                                     showMarkDialog = false
                                 }
                             },
@@ -365,11 +382,47 @@ fun TripEditScreen(
                         pauseCuts = pendingActions.filterIsInstance<PendingAction.Cut>().map { PauseCut(it.start, it.end) }
                     )
                     showApplyConfirm = false
-                    onApplyEdit(plan)
+                    // Noch nicht gespeicherte Label-/Markierungs-Änderungen mit übergeben, damit sie
+                    // beim Anwenden eines Zuschnitts nicht stillschweigend verloren gehen.
+                    onApplyEdit(plan, pendingLabels, pendingMarks)
                 }) { Text("Anwenden") }
             },
             dismissButton = {
                 TextButton(onClick = { showApplyConfirm = false }) { Text("Abbrechen") }
+            }
+        )
+    }
+
+    if (showUnsavedDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnsavedDialog = false },
+            title = { Text("Änderungen speichern?") },
+            text = {
+                Column {
+                    if (hasUnsavedMetadata) {
+                        Text("Labels und/oder markierte Abschnitte wurden geändert.")
+                    }
+                    if (hasUnappliedCuts) {
+                        if (hasUnsavedMetadata) Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "Geplante Zuschnitte wurden noch nicht angewendet und gehen beim Verlassen verloren " +
+                                "(unabhängig von \"Speichern\" hier).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                if (hasUnsavedMetadata) {
+                    TextButton(onClick = {
+                        showUnsavedDialog = false
+                        onSaveAndClose(pendingLabels, pendingMarks)
+                    }) { Text("Speichern") }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnsavedDialog = false; onBack() }) { Text("Verwerfen") }
             }
         )
     }

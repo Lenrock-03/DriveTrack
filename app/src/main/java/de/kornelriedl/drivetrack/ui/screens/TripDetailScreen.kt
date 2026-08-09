@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.formatTripDateHeading
 import de.kornelriedl.drivetrack.data.labelIcon
 import de.kornelriedl.drivetrack.data.labelList
 import de.kornelriedl.drivetrack.data.segmentMarks
@@ -84,12 +85,9 @@ fun TripDetailScreen(
         ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            val dateFormat = remember(trip.startTimestamp) {
-                SimpleDateFormat("EEEE, d. MMMM yyyy", Locale.GERMANY)
-            }
             val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.GERMANY) }
             Text(
-                text = "${dateFormat.format(Date(trip.startTimestamp))} · " +
+                text = "${formatTripDateHeading(trip.startTimestamp)} · " +
                     "${timeFormat.format(Date(trip.startTimestamp))} – " +
                     "${timeFormat.format(Date(trip.endTimestamp))} Uhr",
                 style = MaterialTheme.typography.bodyMedium,

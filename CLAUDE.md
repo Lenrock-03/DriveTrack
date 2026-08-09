@@ -11,9 +11,11 @@ Dieses Repo ist Teil eines Drei-Komponenten-Systems:
 2. **Backend-API** – `C:\Users\korne\OneDrive\Dokumente\Programmieren\DriveTrack` (Node.js/Express),
    läuft live auf `https://drivetrack-api.kornel-riedl.de`
 3. **Web-App** – `C:\Users\korne\OneDrive\Dokumente\Programmieren\DriveTrack-Web` (statisches HTML/JS),
-   läuft live auf `https://drivetrack.kornel-riedl.de`. War bis v1.6.0 rein lesend, kann seit
-   v1.7.0 auch Fahrten zuschneiden/markieren (eigener Schreibpfad, konfliktsicher mit dem
-   App-Sync abgestimmt, siehe "Fahrten bearbeiten"-Abschnitt unten)
+   läuft live auf `https://drivetrack.kornel-riedl.de`. Hatte v1.7.0–v1.10.x einen eigenen
+   Schreibpfad (Zuschneiden/Markieren, Gruppen verwalten) - seit **Web v2.0.0 wieder rein lesend**
+   ("reiner Spiegel" dieser App): die zeitstempelbasierte Fahrt-Identität im Backup-JSON (kein
+   stabiles Id-Feld) führte bei bidirektionalen Bearbeitungen zu Duplikaten/Datenkorruption, siehe
+   Web-CLAUDE.md. Diese App ist dadurch die einzige Quelle der Wahrheit für Bearbeitungen.
 
 Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungsschema (siehe unten) –
 Änderungen daran müssen in allen drei Projekten synchron gehalten werden.
@@ -138,6 +140,16 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
     "Geschwindigkeit" zwischen zwei Fahrten als astronomischer Ausreißer im Graphen/als gerade
     "Teleport"-Linie auf der Karte erscheinen. `offsetSeconds`/`cumulativeKm` im Graphen laufen
     trotzdem durchgehend weiter (keine echte Kalenderzeit-Lücke zwischen den Fahrten sichtbar).
+- **Datums-Überschriften** (seit 0.14.0): im Fahrten-Tab (nicht in der kompakten Home-Vorschau -
+  `HomeScreen`s neuer `showDateHeaders`-Parameter, von `MainActivity.kt` je Aufrufstelle explizit
+  gesetzt) steht über der jeweils obersten (neuesten) Fahrt/Gruppe eines Kalendertags das volle
+  Datum - bei mehreren Fahrten am selben Tag nur einmal. `data/TripGrouping.kt::withDateHeaders()`
+  wandelt `List<TripListEntry>` in `List<TripListRow>` (`DateHeader`/`Item`) um, Kalendertag-
+  Vergleich über `Calendar.get(YEAR/DAY_OF_YEAR)` in lokaler Zeitzone (bewusst nicht
+  `timestamp / 86_400_000L`, das würde bei Zeitzonen-Offsets ungleich UTC falsche Tagesgrenzen
+  ziehen). `formatTripDateHeading()` (ebenfalls dort) ist aus der bisher inline in
+  `TripDetailScreen.kt` stehenden Formatierung extrahiert - beide Stellen nutzen jetzt dieselbe
+  Funktion. Spiegelt sich 1:1 in der Web-App (`formatDateHeading()`/`localDayKey()` in `js/app.js`).
 - **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt`
 - **Einstellungen** (seit 0.5.0): `ui/screens/SettingsScreen.kt` ist nur noch der Einstiegspunkt
   (Konto/Fahrzeuge/Daten/Über, ~200 Zeilen), mit gemeinsamer `SettingsSectionCard`/`SettingsNavCard`
@@ -221,9 +233,11 @@ still nichts (kein Fehler sichtbar, manueller Button bleibt als Fallback):
   Bump von vorher 2024.06.00), `MainActivity`s `onManualSync` ruft dafür genau denselben
   `triggerBackgroundSync()`/`syncFullBackupIfPossible()` auf wie die automatischen Anlässe oben -
   kein separater Code-Pfad. Pendant zum "🔄 Aktualisieren"-Button in der Web-App-Kopfzeile
-  (`js/app.js`, ruft dort nur `loadAndRenderBackup()`, da die Web-App lokale Bearbeitungen bereits
-  beim Speichern selbst pusht statt sie zwischenzuhalten).
-- **Konfliktsicher seit 0.11.0** (Anlass: die Web-App kann seitdem ebenfalls Backups pushen):
+  (`js/app.js`, ruft dort nur `loadAndRenderBackup()` - die Web-App ist seit v2.0.0 rein lesend,
+  siehe "Zugehörige Projekte" oben, pusht also gar nicht mehr selbst).
+- **Konfliktsicher seit 0.11.0** (Anlass ursprünglich: die Web-App konnte zeitweise ebenfalls
+  Backups pushen, v1.7.0–v1.10.x; bleibt seit Web v2.0.0 weiterhin nötig für Mehrgeräte-Sync
+  zwischen mehreren Installationen dieser App):
   `syncFullBackupIfPossible()` ist kein blinder Push mehr, sondern Pull-Check-Merge-Push - lädt
   erst `GET /api/backup` (liefert auch die Server-`id`), vergleicht sie mit der zuletzt bekannten
   (`ServerAuthPreferences.getLastKnownBackupId()`). Weicht sie ab (ein anderes Gerät hat inzwischen

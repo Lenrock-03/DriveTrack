@@ -2,7 +2,7 @@ package de.kornelriedl.drivetrack.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,6 +21,8 @@ import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.TripGroup
 import de.kornelriedl.drivetrack.data.TripListEntry
+import de.kornelriedl.drivetrack.data.TripListRow
+import de.kornelriedl.drivetrack.data.withDateHeaders
 import de.kornelriedl.drivetrack.ui.components.CarSelector
 import de.kornelriedl.drivetrack.ui.components.StatCard
 import de.kornelriedl.drivetrack.ui.components.TripGroupListItem
@@ -45,6 +47,11 @@ fun HomeScreen(
     onSelectCar: (Long?) -> Unit,
     onAddCar: (String) -> Unit,
     showDashboard: Boolean = true,
+    // Datums-Überschriften über der jeweils obersten Fahrt/Gruppe eines Kalendertags (seit 0.14.0) -
+    // bewusst ein expliziter Parameter statt intern an showDashboard gekoppelt, damit der Aufrufer
+    // (MainActivity.kt) an einer Stelle klar sichtbar entscheidet, wo sie erscheinen (nur im
+    // Fahrten-Tab, nicht in der kompakten Home-Vorschau).
+    showDateHeaders: Boolean = false,
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
     onCreateGroup: () -> Unit = {},
@@ -167,23 +174,39 @@ fun HomeScreen(
                         )
                     }
                 } else {
+                    val rows = remember(entries, showDateHeaders) {
+                        if (showDateHeaders) entries.withDateHeaders()
+                        else entries.map { TripListRow.Item(it) }
+                    }
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(entries) { entry ->
-                            when (entry) {
-                                is TripListEntry.SingleTrip -> TripListItem(
-                                    trip = entry.trip,
-                                    onClick = { onTripClick(entry.trip) },
-                                    onLongClick = { actionTrip = entry.trip }
+                        itemsIndexed(rows) { index, row ->
+                            when (row) {
+                                is TripListRow.DateHeader -> Text(
+                                    text = row.label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(
+                                        start = 4.dp,
+                                        top = if (index == 0) 0.dp else 16.dp,
+                                        bottom = 8.dp
+                                    )
                                 )
-                                // Gruppen bekommen kein Long-Press-Aktionsmenü hier - Umbenennen/
-                                // Löschen einer Gruppe lebt bewusst im TripGroupDetailScreen, nicht
-                                // auf der zusammengefassten Zeile (vermeidet ein zweites, Gruppen-
-                                // spezifisches Aktionsmenü direkt in dieser Liste).
-                                is TripListEntry.Group -> TripGroupListItem(
-                                    group = entry.group,
-                                    trips = entry.trips,
-                                    onClick = { onGroupClick(entry.group) }
-                                )
+                                is TripListRow.Item -> when (val entry = row.entry) {
+                                    is TripListEntry.SingleTrip -> TripListItem(
+                                        trip = entry.trip,
+                                        onClick = { onTripClick(entry.trip) },
+                                        onLongClick = { actionTrip = entry.trip }
+                                    )
+                                    // Gruppen bekommen kein Long-Press-Aktionsmenü hier - Umbenennen/
+                                    // Löschen einer Gruppe lebt bewusst im TripGroupDetailScreen, nicht
+                                    // auf der zusammengefassten Zeile (vermeidet ein zweites, Gruppen-
+                                    // spezifisches Aktionsmenü direkt in dieser Liste).
+                                    is TripListEntry.Group -> TripGroupListItem(
+                                        group = entry.group,
+                                        trips = entry.trips,
+                                        onClick = { onGroupClick(entry.group) }
+                                    )
+                                }
                             }
                         }
                     }

@@ -634,6 +634,8 @@ fun DriveTrackApp(
                 onSelectCar = onSelectCar,
                 onAddCar = onAddCar,
                 showDashboard = true,
+                // Kompakte Vorschau bleibt bewusst ohne Datums-Überschriften, siehe HomeScreen.kt.
+                showDateHeaders = false,
                 isRefreshing = isRefreshing,
                 onRefresh = onManualSync,
                 onCreateGroup = { showGroupPicker = true },
@@ -666,6 +668,8 @@ fun DriveTrackApp(
                 onSelectCar = onSelectCar,
                 onAddCar = onAddCar,
                 showDashboard = false,
+                // Volle Liste im Fahrten-Tab: hier stehen die Datums-Überschriften, siehe HomeScreen.kt.
+                showDateHeaders = true,
                 isRefreshing = isRefreshing,
                 onRefresh = onManualSync,
                 onCreateGroup = { showGroupPicker = true },

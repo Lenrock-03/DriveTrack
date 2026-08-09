@@ -13,8 +13,8 @@ android {
         applicationId = "de.kornelriedl.drivetrack"
         minSdk = 26
         targetSdk = 34
-        versionCode = 25
-        versionName = "0.13.0"
+        versionCode = 26
+        versionName = "0.14.0"
     }
 
     buildFeatures {

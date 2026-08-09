@@ -5,6 +5,16 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.14.0] - 2026-08-09
+
+### Hinzugefügt
+- **Datums-Überschriften in der Fahrtenliste**: im Fahrten-Tab steht jetzt über der jeweils
+  obersten (neuesten) Fahrt/Gruppe eines Kalendertags das volle Datum - bei mehreren Fahrten am
+  selben Tag erscheint es nur einmal (`data/TripGrouping.kt::withDateHeaders()`). Die kompakte
+  "Letzte Fahrten"-Vorschau auf dem Home-Dashboard bleibt bewusst unverändert ohne Überschriften.
+  Format spiegelt die bereits bestehende Fahrt-Detail-Überschrift (`formatTripDateHeading()`, neu
+  aus `TripDetailScreen.kt` extrahiert statt doppelt gepflegt). Spiegelt sich 1:1 in der Web-App.
+
 ## [0.13.0] - 2026-08-09
 
 ### Hinzugefügt

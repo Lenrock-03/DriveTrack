@@ -233,6 +233,22 @@ fun DriveTrackApp(
     // Nur die Id merken, nicht das Trip-Objekt - TripEditScreen liest die aktuelle Fahrt live aus
     // dem trips-Flow (Muster identisch zu editingCarId oben).
     var editingTripId by remember { mutableStateOf<Long?>(null) }
+    // Zentral genutzt nach JEDER trip-relevanten lokalen Änderung (Umbenennen, Zuschneiden,
+    // Labels/Markierungen speichern, Auto zuordnen, Löschen) - vorher synchronisierte nur das Ende
+    // einer Aufzeichnung, alle anderen Bearbeitungen blieben bis zur nächsten Fahrt unsynchronisiert.
+    // syncFullBackupIfPossible liest/mergt/pusht selbst konfliktsicher (siehe ServerSync.kt), hier
+    // nur "frisch aus der DB lesen und aufrufen" - suspend, daher innerhalb eines scope.launch nach
+    // dem eigentlichen lokalen Schreibvorgang aufzurufen.
+    val triggerBackgroundSync: suspend () -> Unit = {
+        withContext(Dispatchers.IO) {
+            ServerSync.syncFullBackupIfPossible(
+                context,
+                userDao.getAllUsers().first(),
+                carDao.getAllCars().first(),
+                tripDao.getAllTrips().first()
+            )
+        }
+    }
     // Labels/Markierungen werden mit übergeben (nicht nur der Zuschneide-Plan), damit noch nicht
     // gespeicherte Änderungen aus TripEditScreen beim Anwenden eines Zuschnitts nicht verloren gehen
     // (siehe TripEditScreen-Doc-Kommentar).
@@ -246,6 +262,7 @@ fun DriveTrackApp(
                     TrackFileStore.write(context, outcome.trip.id, outcome.newTrackJson)
                     MapThumbnailGenerator.invalidate(context, outcome.trip.id)
                 }
+                triggerBackgroundSync()
             } else {
                 Toast.makeText(context, "Änderung ungültig (zu wenige Punkte übrig)", Toast.LENGTH_SHORT).show()
             }
@@ -258,6 +275,7 @@ fun DriveTrackApp(
         scope.launch {
             val newMax = withContext(Dispatchers.IO) { recomputeMaxSpeedExcludingMarks(trip, context, marks) }
             tripDao.updateTrip(trip.copy(labels = labels.toLabelsString(), segmentMarksJson = marks.toJson(), maxSpeedKmh = newMax))
+            triggerBackgroundSync()
             editingTripId = null
         }
     }
@@ -368,7 +386,10 @@ fun DriveTrackApp(
             trip = currentSelectedTrip,
             cars = cars,
             onChangeCar = { trip, newCarId ->
-                scope.launch { tripDao.updateTrip(trip.copy(carId = newCarId)) }
+                scope.launch {
+                    tripDao.updateTrip(trip.copy(carId = newCarId))
+                    triggerBackgroundSync()
+                }
             },
             onEdit = { editingTripId = currentSelectedTrip.id },
             onBack = { selectedTripId = null }
@@ -435,12 +456,16 @@ fun DriveTrackApp(
                 recentTrips = filteredTrips.take(5),
                 onTripClick = { selectedTripId = it.id },
                 onRenameTrip = { trip, newName ->
-                    scope.launch { tripDao.updateTrip(trip.copy(name = newName)) }
+                    scope.launch {
+                        tripDao.updateTrip(trip.copy(name = newName))
+                        triggerBackgroundSync()
+                    }
                 },
                 onDeleteTrip = { trip ->
                     scope.launch {
                         tripDao.deleteTrip(trip)
                         withContext(Dispatchers.IO) { TrackFileStore.delete(context, trip.id) }
+                        triggerBackgroundSync()
                     }
                 },
                 cars = cars,
@@ -459,12 +484,16 @@ fun DriveTrackApp(
                 recentTrips = filteredTrips,
                 onTripClick = { selectedTripId = it.id },
                 onRenameTrip = { trip, newName ->
-                    scope.launch { tripDao.updateTrip(trip.copy(name = newName)) }
+                    scope.launch {
+                        tripDao.updateTrip(trip.copy(name = newName))
+                        triggerBackgroundSync()
+                    }
                 },
                 onDeleteTrip = { trip ->
                     scope.launch {
                         tripDao.deleteTrip(trip)
                         withContext(Dispatchers.IO) { TrackFileStore.delete(context, trip.id) }
+                        triggerBackgroundSync()
                     }
                 },
                 cars = cars,

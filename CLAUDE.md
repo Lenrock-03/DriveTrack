@@ -160,13 +160,37 @@ still nichts (kein Fehler sichtbar, manueller Button bleibt als Fallback):
   werden, BEVOR auf `Dispatchers.IO` gewechselt wird – `LocationTracker.points` wird vom
   GPS-Callback ebenfalls auf dem Main-Thread verändert, ein direkter Zugriff aus einer
   Hintergrund-Coroutine wäre nicht thread-sicher.
-- **Nach dem Beenden**: `MainActivity` ruft nach dem lokalen Speichern
-  `ServerSync.syncFullBackupIfPossible()` auf – normaler Voll-Sync (wie der bisherige manuelle
-  Button), holt Nutzer/Autos/Fahrten frisch aus der DB (nicht die Compose-State-Listen, die den
-  gerade eingefügten Trip evtl. noch nicht enthalten). Löscht danach den Live-Zwischenstand auf dem
-  Server (`DELETE /api/live-trip`) – die fertige Fahrt ist jetzt Teil des echten Backups.
+- **Nach dem Beenden UND nach jeder Fahrt-Bearbeitung** (seit 0.11.0 – Umbenennen, Zuschneiden,
+  Labels/Markierungen speichern, Auto-Zuordnen, Löschen; vorher synchronisierte nur das
+  Aufzeichnungsende): ruft `triggerBackgroundSync()` in `MainActivity.kt` →
+  `ServerSync.syncFullBackupIfPossible()` auf, holt Nutzer/Autos/Fahrten dafür frisch aus der DB
+  (nicht die Compose-State-Listen, die z. B. den gerade eingefügten Trip evtl. noch nicht
+  enthalten). Löscht danach den Live-Zwischenstand auf dem Server (`DELETE /api/live-trip`).
 - **Beim Verwerfen** (Bluetooth-Fehlstart, siehe `DiscardRecordingReceiver`): nur der
   Live-Zwischenstand wird gelöscht, kein Backup-Sync (die Fahrt wurde ja nie gespeichert).
+- **Konfliktsicher seit 0.11.0** (Anlass: die Web-App kann seitdem ebenfalls Backups pushen):
+  `syncFullBackupIfPossible()` ist kein blinder Push mehr, sondern Pull-Check-Merge-Push - lädt
+  erst `GET /api/backup` (liefert auch die Server-`id`), vergleicht sie mit der zuletzt bekannten
+  (`ServerAuthPreferences.getLastKnownBackupId()`). Weicht sie ab (ein anderes Gerät hat inzwischen
+  gepusht), wird diese Server-Version erst additiv gemergt (`BackupExporter.importBackupFromJson()`
+  - dedupliziert Trips über Start-/Endzeitpunkt, Users/Cars über Namen, überschreibt/löscht nie)
+  und die DB danach frisch gelesen, BEVOR der eigentliche Push passiert - sonst würde jeder
+  Sync-Zyklus unbemerkt fremde Bearbeitungen überschreiben. Bekannte Grenze: kein Feld-Level-Merge
+  - wird *dieselbe* Fahrt zwischen zwei Syncs auf zwei Geräten unterschiedlich bearbeitet, gewinnt
+  die zeitlich letzte (die überschriebene Zwischenversion bleibt aber über den Versionsverlauf
+  wiederherstellbar, siehe unten). Löschungen werden ebenfalls nicht über Merges propagiert (rein
+  additiver Merge kann eine woanders gelöschte Fahrt bei einem Konflikt wieder auferstehen lassen,
+  falls just in diesem Moment ein Konflikt eintritt - seltener Edge-Case, bewusst nicht gelöst).
+- **Versionsverlauf** (`ServerBackupScreen.kt`, seit 0.11.0): nutzt die bis dahin nie aufgerufenen
+  `ServerApi.backupHistory()`/`downloadBackupVersion()` (Backend speichert jede gepushte Version für
+  immer, `POST /api/backup` überschreibt nie - `backups`-Tabelle ist bereits Append-only). Zeigt
+  Zeitstempel vergangener Versionen, Antippen ruft `BackupExporter.restoreFromJson()` auf - anders
+  als der normale additive Import werden dabei bestehende Fahrten mit übereinstimmender Start-/
+  Endzeit gezielt auf den gewählten (älteren) Stand ZURÜCKGESETZT statt als Duplikat übersprungen -
+  das eigentliche manuelle Sicherheitsnetz bei einem Sync-Konflikt oder einer fehlerhaften
+  Bearbeitung. `ServerApi.backupHistory()` parst die Antwort bewusst NICHT über `safeRequest()`/
+  `ApiResult` (die immer `JSONObject(text)` erwarten) - der Endpunkt liefert ein rohes JSON-Array,
+  was vor 0.11.0 dazu geführt hätte, dass die (bis dahin nie aufgerufene) Funktion immer fehlgeschlagen wäre.
 
 ## Bekannte Stolpersteine (bereits gelöst, für Kontext)
 

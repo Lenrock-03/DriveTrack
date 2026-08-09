@@ -4,7 +4,9 @@ import android.content.Context
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.UserProfile
 import de.kornelriedl.drivetrack.data.Trip
+import de.kornelriedl.drivetrack.data.local.AppDatabase
 import de.kornelriedl.drivetrack.export.BackupExporter
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 
 /**
@@ -16,17 +18,61 @@ import org.json.JSONObject
 object ServerSync {
 
     /**
-     * Voller Sync (alle Fahrten), z. B. direkt nachdem eine Aufzeichnung lokal gespeichert wurde.
-     * Löscht anschließend den Live-Zwischenstand auf dem Server, falls einer existiert - die
-     * gerade beendete Fahrt ist jetzt Teil dieses vollständigen Backups.
+     * Voller Sync (alle Fahrten) - PULL-CHECK-MERGE-PUSH statt eines blinden Push: seit die
+     * Web-App (v0.11.0) ebenfalls Backups hochladen kann, würde ein reiner Push sonst
+     * stillschweigend jede Web-Bearbeitung überschreiben, die dieses Gerät noch nicht kennt.
+     *
+     * 1. Aktuellste Server-Version abrufen (`GET /api/backup`, liefert auch deren `id`).
+     * 2. Keine Version vorhanden ODER deren `id` == der zuletzt von diesem Gerät gesehenen `id`
+     *    (`ServerAuthPreferences.getLastKnownBackupId`) → kein Konflikt, wie bisher pushen.
+     * 3. `id` weicht ab → ein anderes Gerät hat inzwischen gepusht: Server-Version entschlüsseln
+     *    und additiv in die lokale DB mergen (dieselbe, bereits etablierte Merge-Logik wie beim
+     *    manuellen Wiederherstellen, `BackupExporter.importBackupFromJson()` - dedupliziert Trips
+     *    über Start-/Endzeitpunkt, Users/Cars über Namen, überschreibt nie, löscht nie), danach
+     *    den so gemergten (jetzt vollständigen) Gesamtstand pushen. Die überholte Server-Version
+     *    bleibt dabei unangetastet in der Backup-Historie erhalten (`POST /api/backup` fügt immer
+     *    nur eine neue Zeile hinzu) - das ist die eigentliche "Sicherung ohne Bearbeitungen, die
+     *    bei Konflikten greift": nichts geht je verloren, nur automatisch gemergt statt überschrieben.
+     *
+     * `users`/`cars`/`trips` werden bei einem Merge NICHT verwendet (könnten durch den Merge
+     * veraltet sein) - stattdessen wird danach frisch aus der DB gelesen. Ohne Konflikt werden sie
+     * unverändert wie bisher direkt verwendet (spart einen unnötigen Extra-Read im Normalfall).
      */
-    fun syncFullBackupIfPossible(context: Context, users: List<UserProfile>, cars: List<Car>, trips: List<Trip>) {
+    suspend fun syncFullBackupIfPossible(context: Context, users: List<UserProfile>, cars: List<Car>, trips: List<Trip>) {
         val token = ServerAuthPreferences.getToken(context) ?: return
         val dek = ServerSession.dek ?: return
         try {
-            val json = BackupExporter.buildBackupJson(context, users, cars, trips)
+            var finalUsers = users
+            var finalCars = cars
+            var finalTrips = trips
+
+            val latest = ServerApi.downloadLatestBackup(token)
+            if (latest.success && latest.json != null) {
+                val remoteId = latest.json.optLong("id", -1L)
+                val lastKnownId = ServerAuthPreferences.getLastKnownBackupId(context)
+                if (remoteId != -1L && remoteId != lastKnownId) {
+                    // Konflikt: ein anderes Gerät hat seitdem gepusht - erst mergen, dann weiter unten pushen.
+                    val blob = ServerCrypto.EncryptedBlob(
+                        ciphertextBase64 = latest.json.getString("ciphertext"),
+                        ivBase64 = latest.json.getString("iv")
+                    )
+                    val remoteJson = ServerCrypto.decryptWithDek(blob, dek)
+                    BackupExporter.importBackupFromJson(context, remoteJson)
+
+                    val db = AppDatabase.getInstance(context)
+                    finalUsers = db.userDao().getAllUsers().first()
+                    finalCars = db.carDao().getAllCars().first()
+                    finalTrips = db.tripDao().getAllTrips().first()
+                }
+            }
+
+            val json = BackupExporter.buildBackupJson(context, finalUsers, finalCars, finalTrips)
             val blob = ServerCrypto.encryptWithDek(json, dek)
-            ServerApi.uploadBackup(token, blob.ciphertextBase64, blob.ivBase64)
+            val uploadResult = ServerApi.uploadBackup(token, blob.ciphertextBase64, blob.ivBase64)
+            if (uploadResult.success) {
+                val newId = uploadResult.json?.optLong("id", -1L) ?: -1L
+                if (newId != -1L) ServerAuthPreferences.setLastKnownBackupId(context, newId)
+            }
             ServerApi.deleteLiveTrip(token)
         } catch (e: Exception) {
             // Best effort - der manuelle "Backup sichern"-Button bleibt als Fallback verfügbar

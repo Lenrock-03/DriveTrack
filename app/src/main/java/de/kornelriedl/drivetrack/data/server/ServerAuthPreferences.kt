@@ -63,6 +63,21 @@ object ServerAuthPreferences {
     fun getPasswordSalt(context: Context): String? = prefs(context).getString("passwordSalt", null)
     fun getDekWrappedPassword(context: Context): String? = prefs(context).getString("dekWrappedPassword", null)
 
+    /**
+     * Die Server-Backup-`id` (siehe `backups`-Tabelle im Backend), die dieses Gerät zuletzt
+     * gesehen/gepusht hat - Grundlage für den konfliktsicheren Sync in ServerSync.kt: weicht die
+     * tatsächlich aktuellste Server-Version davon ab, hat ein ANDERES Gerät (z. B. die Web-App)
+     * inzwischen gepusht, und der lokale Stand muss erst gemergt werden, bevor man selbst pusht.
+     */
+    fun setLastKnownBackupId(context: Context, id: Long) {
+        prefs(context).edit().putLong("lastKnownBackupId", id).apply()
+    }
+
+    fun getLastKnownBackupId(context: Context): Long? {
+        val id = prefs(context).getLong("lastKnownBackupId", -1L)
+        return if (id == -1L) null else id
+    }
+
     fun isLoggedIn(context: Context): Boolean = getToken(context) != null
 
     fun clearSession(context: Context) {

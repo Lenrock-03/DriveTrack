@@ -5,6 +5,27 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.11.0] - 2026-08-09
+
+### Geändert
+- **Konfliktsicherer Server-Sync**: `ServerSync.syncFullBackupIfPossible()` war bisher ein reiner,
+  ungeprüfter Push (überschrieb serverseitig blind alles). Prüft jetzt vorher, ob der Server
+  inzwischen eine diesem Gerät unbekannte, neuere Version hat (z. B. von der Web-App gepusht) - falls
+  ja, wird sie erst additiv in die lokale Datenbank gemergt, bevor der (jetzt vollständige) Stand
+  gepusht wird. Nichts geht dabei verloren: jede Server-Version bleibt für immer in der Backup-
+  Historie erhalten (`POST /api/backup` fügte schon immer nur hinzu, nie überschrieben).
+- Bisher synchronisierte nur das Ende einer Aufzeichnung automatisch - Umbenennen, Zuschneiden,
+  Labels/Markierungen speichern, Auto-Zuordnen und Löschen einer Fahrt lösen jetzt ebenfalls
+  zeitnah einen Sync aus, statt bis zur nächsten Fahrt zu warten.
+
+### Hinzugefügt
+- **Versionsverlauf** in den Server-Backup-Einstellungen: Liste aller bisherigen Server-Versionen,
+  antippen setzt Fahrten mit übereinstimmender Start-/Endzeit gezielt auf diesen (z. B. bekannt
+  sauberen) Stand zurück - das eigentliche Sicherheitsnetz bei Synchronisierungskonflikten.
+  (Behebt nebenbei einen bislang nie aufgefallenen Bug: der zugehörige Backend-Endpunkt lieferte
+  ein JSON-*Array*, der Client parste die Antwort aber immer als JSON-*Objekt* und scheiterte
+  dadurch bei jedem Aufruf - die Funktion wurde bis jetzt einfach nie aufgerufen.)
+
 ## [0.10.0] - 2026-08-09
 
 ### Geändert

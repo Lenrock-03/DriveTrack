@@ -22,7 +22,10 @@ data class ImportSummary(
     val carsImported: Int = 0,
     val carsSkipped: Int = 0,
     val tripsImported: Int = 0,
-    val tripsSkipped: Int = 0
+    val tripsSkipped: Int = 0,
+    // Nur von restoreFromJson() befüllt: Anzahl der Fahrten, die auf den Stand der wiederhergestellten
+    // Version zurückgesetzt wurden (statt neu angelegt), siehe dortiger Doc-Kommentar.
+    val tripsRestored: Int = 0
 )
 
 /**
@@ -218,6 +221,135 @@ object BackupExporter {
             carsSkipped = carsSkipped,
             tripsImported = tripsImported,
             tripsSkipped = tripsSkipped
+        )
+    }
+
+    /**
+     * Wie importBackupFromJson(), aber für den "Versionsverlauf"-Wiederherstellen-Fall gedacht:
+     * Fahrten, die anhand von Start-/Endzeitpunkt bereits lokal existieren, werden NICHT
+     * übersprungen, sondern auf den Stand der gewählten (i.d.R. älteren) Version zurückgesetzt
+     * (überschreibt Name/Distanz/Geschwindigkeiten/Auto/Labels/Markierungen/GPS-Track). Das ist der
+     * eigentliche "Konflikt-Sicherheitsnetz"-Anwendungsfall: eine fehlerhafte Bearbeitung (egal ob
+     * von der App oder der Web-Ansicht) auf eine bekannt saubere Server-Version zurückdrehen -
+     * importBackupFromJson() allein würde die fehlerhafte lokale Fahrt als "Duplikat" überspringen
+     * und nichts reparieren. Nutzer/Autos bleiben bewusst additiv (nur ergänzen, nie überschreiben) -
+     * unwahrscheinlich, dass die je in Konflikt geraten, und ein Namens-Overwrite dort wäre riskanter
+     * als nützlich.
+     */
+    suspend fun restoreFromJson(context: Context, jsonText: String): ImportSummary {
+        val root = try {
+            JSONObject(jsonText)
+        } catch (e: Exception) {
+            return ImportSummary(success = false)
+        }
+
+        val db = AppDatabase.getInstance(context)
+        val userDao = db.userDao()
+        val carDao = db.carDao()
+        val tripDao = db.tripDao()
+
+        val existingUsers = userDao.getAllUsers().first()
+        val existingCars = carDao.getAllCars().first()
+        val existingTrips = tripDao.getAllTrips().first()
+
+        val userIdMap = mutableMapOf<Long, Long>()
+        var usersImported = 0
+        var usersSkipped = 0
+        val usersArray = root.optJSONArray("users") ?: JSONArray()
+        for (i in 0 until usersArray.length()) {
+            val obj = usersArray.getJSONObject(i)
+            val name = obj.getString("name")
+            val oldId = obj.getLong("id")
+            val existing = existingUsers.find { it.name.equals(name, ignoreCase = true) }
+            if (existing != null) {
+                userIdMap[oldId] = existing.id
+                usersSkipped++
+            } else {
+                val newId = userDao.insertUser(UserProfile(name = name))
+                userIdMap[oldId] = newId
+                usersImported++
+            }
+        }
+
+        val carIdMap = mutableMapOf<Long, Long>()
+        var carsImported = 0
+        var carsSkipped = 0
+        val carsArray = root.optJSONArray("cars") ?: JSONArray()
+        for (i in 0 until carsArray.length()) {
+            val obj = carsArray.getJSONObject(i)
+            val name = obj.getString("name")
+            val oldId = obj.getLong("id")
+            val existing = existingCars.find { it.name.equals(name, ignoreCase = true) }
+            if (existing != null) {
+                carIdMap[oldId] = existing.id
+                carsSkipped++
+            } else {
+                val newId = carDao.insertCar(Car(name = name))
+                carIdMap[oldId] = newId
+                carsImported++
+            }
+        }
+
+        var tripsImported = 0
+        var tripsRestored = 0
+        val tripsArray = root.optJSONArray("trips") ?: JSONArray()
+        for (i in 0 until tripsArray.length()) {
+            val obj = tripsArray.getJSONObject(i)
+            val startTimestamp = obj.getLong("startTimestamp")
+            val endTimestamp = obj.getLong("endTimestamp")
+            val oldCarId = if (obj.isNull("carId")) null else obj.getLong("carId")
+            val newCarId = oldCarId?.let { carIdMap[it] }
+            val gpxTrackJson = obj.getString("gpxTrackJson")
+            val labels = if (obj.has("labels") && !obj.isNull("labels")) obj.getString("labels") else null
+            val pausedMinutes = obj.optLong("pausedMinutes", 0)
+            val segmentMarksJson = obj.optString("segmentMarksJson", "[]")
+
+            val existingTrip = existingTrips.find {
+                it.startTimestamp == startTimestamp && it.endTimestamp == endTimestamp
+            }
+            if (existingTrip != null) {
+                tripDao.updateTrip(
+                    existingTrip.copy(
+                        name = obj.getString("name"),
+                        distanceMeters = obj.getDouble("distanceMeters"),
+                        avgSpeedKmh = obj.getDouble("avgSpeedKmh"),
+                        maxSpeedKmh = obj.getDouble("maxSpeedKmh"),
+                        carId = newCarId,
+                        labels = labels,
+                        pausedMinutes = pausedMinutes,
+                        segmentMarksJson = segmentMarksJson
+                    )
+                )
+                TrackFileStore.write(context, existingTrip.id, gpxTrackJson)
+                tripsRestored++
+            } else {
+                val newTripId = tripDao.insertTrip(
+                    Trip(
+                        name = obj.getString("name"),
+                        startTimestamp = startTimestamp,
+                        endTimestamp = endTimestamp,
+                        distanceMeters = obj.getDouble("distanceMeters"),
+                        avgSpeedKmh = obj.getDouble("avgSpeedKmh"),
+                        maxSpeedKmh = obj.getDouble("maxSpeedKmh"),
+                        carId = newCarId,
+                        labels = labels,
+                        pausedMinutes = pausedMinutes,
+                        segmentMarksJson = segmentMarksJson
+                    )
+                )
+                TrackFileStore.write(context, newTripId, gpxTrackJson)
+                tripsImported++
+            }
+        }
+
+        return ImportSummary(
+            success = true,
+            usersImported = usersImported,
+            usersSkipped = usersSkipped,
+            carsImported = carsImported,
+            carsSkipped = carsSkipped,
+            tripsImported = tripsImported,
+            tripsRestored = tripsRestored
         )
     }
 }

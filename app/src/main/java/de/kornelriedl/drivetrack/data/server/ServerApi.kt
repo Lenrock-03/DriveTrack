@@ -1,5 +1,6 @@
 package de.kornelriedl.drivetrack.data.server
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -134,8 +135,33 @@ object ServerApi {
         return safeRequest("/backup", "GET", null, token)
     }
 
-    fun backupHistory(token: String): ApiResult {
-        return safeRequest("/backup/history", "GET", null, token)
+    /**
+     * Liste aller bisherigen Backup-Versionen dieses Nutzers (id + Zeitstempel, neueste zuerst),
+     * Grundlage für "Versionsverlauf" in ServerBackupScreen.kt.
+     *
+     * Bewusst NICHT über safeRequest()/ApiResult (das erwartet immer ein JSON-*Objekt* als
+     * Antwort-Body via `JSONObject(text)`) - `GET /api/backup/history` liefert laut Backend aber
+     * ein rohes JSON-*Array*, `JSONObject("[...]")` würde also immer eine JSONException werfen
+     * und via safeRequest()'s äußerem catch stets `ApiResult(false, ...)` zurückgeben. Genau das
+     * ist vermutlich der Grund, warum diese Funktion vorher nirgends erfolgreich aufgerufen wurde.
+     */
+    fun backupHistory(token: String): List<Pair<Long, Long>> {
+        return try {
+            val (code, text) = request("/backup/history", "GET", null, token)
+            if (code !in 200..299) return emptyList()
+            val arr = JSONArray(text)
+            (0 until arr.length()).map { i ->
+                val obj = arr.getJSONObject(i)
+                obj.getLong("id") to obj.getLong("createdAt")
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Eine bestimmte, ggf. ältere Backup-Version (siehe backupHistory()'s Id-Liste). */
+    fun downloadBackupVersion(token: String, id: Long): ApiResult {
+        return safeRequest("/backup/$id", "GET", null, token)
     }
 
     /** Zwischenstand einer laufenden Aufzeichnung speichern (Upsert, keine Historie). */

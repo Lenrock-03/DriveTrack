@@ -1,5 +1,6 @@
 package de.kornelriedl.drivetrack.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +26,9 @@ import de.kornelriedl.drivetrack.export.BackupExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +52,13 @@ fun ServerBackupScreen(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var infoMessage by remember { mutableStateOf<String?>(null) }
+
+    // Versionsverlauf ("Backup-Sicherung ohne Bearbeitungen, die bei Konflikten greift"): jede
+    // frühere Server-Version bleibt für immer abrufbar (POST /api/backup fügt nur hinzu, überschreibt
+    // nie), hier als manueller Wiederherstellen-Hebel freigelegt.
+    var showHistorySheet by remember { mutableStateOf(false) }
+    var historyList by remember { mutableStateOf<List<Pair<Long, Long>>>(emptyList()) }
+    var restoreConfirmId by remember { mutableStateOf<Long?>(null) }
 
     Scaffold(
         topBar = {
@@ -317,6 +328,22 @@ fun ServerBackupScreen(
                             isLoading = false
                         }
                     },
+                    onShowHistory = {
+                        errorMessage = null
+                        infoMessage = null
+                        isLoading = true
+                        scope.launch {
+                            val token = ServerAuthPreferences.getToken(context)
+                            if (token == null) {
+                                errorMessage = "Bitte erst einloggen"
+                                isLoading = false
+                                return@launch
+                            }
+                            historyList = withContext(Dispatchers.IO) { ServerApi.backupHistory(token) }
+                            showHistorySheet = true
+                            isLoading = false
+                        }
+                    },
                     onLogout = {
                         ServerAuthPreferences.clearSession(context)
                         ServerSession.clear()
@@ -329,6 +356,101 @@ fun ServerBackupScreen(
                 )
             }
         }
+    }
+
+    if (showHistorySheet) {
+        val timeFormat = remember { SimpleDateFormat("EEEE, d. MMM yyyy · HH:mm", Locale.GERMANY) }
+        AlertDialog(
+            onDismissRequest = { showHistorySheet = false },
+            title = { Text("Versionsverlauf") },
+            text = {
+                Column {
+                    if (historyList.isEmpty()) {
+                        Text(
+                            "Kein Verlauf vorhanden.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            "Antippen setzt Fahrten mit übereinstimmender Start-/Endzeit auf diesen " +
+                                "Stand zurück (Name, Werte, Labels, Markierungen, GPS-Track).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        historyList.forEach { (id, createdAt) ->
+                            Text(
+                                timeFormat.format(Date(createdAt)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        restoreConfirmId = id
+                                        showHistorySheet = false
+                                    }
+                                    .padding(vertical = 10.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showHistorySheet = false }) { Text("Schließen") } }
+        )
+    }
+
+    val restoreId = restoreConfirmId
+    if (restoreId != null) {
+        AlertDialog(
+            onDismissRequest = { restoreConfirmId = null },
+            title = { Text("Version wiederherstellen?") },
+            text = {
+                Text(
+                    "Bestehende Fahrten mit übereinstimmender Start-/Endzeit werden auf diesen " +
+                        "Stand zurückgesetzt. Fahrten, die nur in dieser Version existieren, werden " +
+                        "ergänzt. Nichts wird gelöscht."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    restoreConfirmId = null
+                    errorMessage = null
+                    infoMessage = null
+                    isLoading = true
+                    scope.launch {
+                        val token = ServerAuthPreferences.getToken(context)
+                        val dek = ServerSession.dek
+                        if (token == null || dek == null) {
+                            errorMessage = "Bitte erst einloggen/entsperren"
+                            isLoading = false
+                            return@launch
+                        }
+                        val result = withContext(Dispatchers.IO) { ServerApi.downloadBackupVersion(token, restoreId) }
+                        if (result.success && result.json != null) {
+                            try {
+                                val blob = ServerCrypto.EncryptedBlob(
+                                    ciphertextBase64 = result.json.getString("ciphertext"),
+                                    ivBase64 = result.json.getString("iv")
+                                )
+                                val json = withContext(Dispatchers.Default) { ServerCrypto.decryptWithDek(blob, dek) }
+                                val summary = withContext(Dispatchers.IO) { BackupExporter.restoreFromJson(context, json) }
+                                infoMessage = if (summary.success) {
+                                    "${summary.tripsRestored} Fahrt(en) zurückgesetzt" +
+                                        if (summary.tripsImported > 0) ", ${summary.tripsImported} ergänzt" else ""
+                                } else null
+                                if (summary.success) onImportComplete()
+                            } catch (e: Exception) {
+                                errorMessage = "Entschlüsseln fehlgeschlagen"
+                            }
+                        } else {
+                            errorMessage = result.error ?: "Version konnte nicht geladen werden"
+                        }
+                        isLoading = false
+                    }
+                }) { Text("Wiederherstellen") }
+            },
+            dismissButton = { TextButton(onClick = { restoreConfirmId = null }) { Text("Abbrechen") } }
+        )
     }
 }
 
@@ -584,6 +706,7 @@ private fun StatusView(
     isLoading: Boolean,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
+    onShowHistory: () -> Unit,
     onLogout: () -> Unit
 ) {
     Card(
@@ -627,6 +750,16 @@ private fun StatusView(
         modifier = Modifier.fillMaxWidth()
     ) {
         Text("Vom Server wiederherstellen")
+    }
+
+    Spacer(Modifier.height(10.dp))
+
+    TextButton(
+        onClick = onShowHistory,
+        enabled = !isLoading,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Versionsverlauf")
     }
 
     Spacer(Modifier.height(24.dp))

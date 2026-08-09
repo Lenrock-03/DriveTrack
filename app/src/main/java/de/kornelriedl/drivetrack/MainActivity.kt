@@ -249,6 +249,20 @@ fun DriveTrackApp(
             )
         }
     }
+    // Runterziehen auf der Fahrtenliste (Home/Fahrten) löst denselben konfliktsicheren Sync manuell
+    // aus, statt auf den nächsten automatischen Anlass zu warten - "einfach und sofort" über alle
+    // Geräte aktuell halten. isRefreshing steuert nur die Indikator-Animation in PullToRefreshBox.
+    var isRefreshing by remember { mutableStateOf(false) }
+    val onManualSync: () -> Unit = {
+        scope.launch {
+            isRefreshing = true
+            try {
+                triggerBackgroundSync()
+            } finally {
+                isRefreshing = false
+            }
+        }
+    }
     // Labels/Markierungen werden mit übergeben (nicht nur der Zuschneide-Plan), damit noch nicht
     // gespeicherte Änderungen aus TripEditScreen beim Anwenden eines Zuschnitts nicht verloren gehen
     // (siehe TripEditScreen-Doc-Kommentar).
@@ -473,6 +487,8 @@ fun DriveTrackApp(
                 onSelectCar = onSelectCar,
                 onAddCar = onAddCar,
                 showDashboard = true,
+                isRefreshing = isRefreshing,
+                onRefresh = onManualSync,
                 modifier = Modifier.padding(padding)
             )
             NavTab.FAHRTEN -> HomeScreen(
@@ -501,6 +517,8 @@ fun DriveTrackApp(
                 onSelectCar = onSelectCar,
                 onAddCar = onAddCar,
                 showDashboard = false,
+                isRefreshing = isRefreshing,
+                onRefresh = onManualSync,
                 modifier = Modifier.padding(padding)
             )
             NavTab.AUFZEICHNEN -> RecordScreen(

@@ -11,7 +11,9 @@ Dieses Repo ist Teil eines Drei-Komponenten-Systems:
 2. **Backend-API** – `C:\Users\korne\OneDrive\Dokumente\Programmieren\DriveTrack` (Node.js/Express),
    läuft live auf `https://drivetrack-api.kornel-riedl.de`
 3. **Web-App** – `C:\Users\korne\OneDrive\Dokumente\Programmieren\DriveTrack-Web` (statisches HTML/JS),
-   läuft live auf `https://drivetrack.kornel-riedl.de`, reiner Lese-Client fürs Server-Backup
+   läuft live auf `https://drivetrack.kornel-riedl.de`. War bis v1.6.0 rein lesend, kann seit
+   v1.7.0 auch Fahrten zuschneiden/markieren (eigener Schreibpfad, konfliktsicher mit dem
+   App-Sync abgestimmt, siehe "Fahrten bearbeiten"-Abschnitt unten)
 
 Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungsschema (siehe unten) –
 Änderungen daran müssen in allen drei Projekten synchron gehalten werden.
@@ -168,6 +170,13 @@ still nichts (kein Fehler sichtbar, manueller Button bleibt als Fallback):
   enthalten). Löscht danach den Live-Zwischenstand auf dem Server (`DELETE /api/live-trip`).
 - **Beim Verwerfen** (Bluetooth-Fehlstart, siehe `DiscardRecordingReceiver`): nur der
   Live-Zwischenstand wird gelöscht, kein Backup-Sync (die Fahrt wurde ja nie gespeichert).
+- **Manuell per Runterziehen** (seit 0.12.0): `HomeScreen.kt` umschließt die Fahrtenliste (Home
+  UND Fahrten) mit `PullToRefreshBox` (Material3, braucht Compose-BOM 2024.10.01+ - deshalb der
+  Bump von vorher 2024.06.00), `MainActivity`s `onManualSync` ruft dafür genau denselben
+  `triggerBackgroundSync()`/`syncFullBackupIfPossible()` auf wie die automatischen Anlässe oben -
+  kein separater Code-Pfad. Pendant zum "🔄 Aktualisieren"-Button in der Web-App-Kopfzeile
+  (`js/app.js`, ruft dort nur `loadAndRenderBackup()`, da die Web-App lokale Bearbeitungen bereits
+  beim Speichern selbst pusht statt sie zwischenzuhalten).
 - **Konfliktsicher seit 0.11.0** (Anlass: die Web-App kann seitdem ebenfalls Backups pushen):
   `syncFullBackupIfPossible()` ist kein blinder Push mehr, sondern Pull-Check-Merge-Push - lädt
   erst `GET /api/backup` (liefert auch die Server-`id`), vergleicht sie mit der zuletzt bekannten

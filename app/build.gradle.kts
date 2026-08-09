@@ -13,8 +13,8 @@ android {
         applicationId = "de.kornelriedl.drivetrack"
         minSdk = 26
         targetSdk = 34
-        versionCode = 22
-        versionName = "0.11.0"
+        versionCode = 23
+        versionName = "0.12.0"
     }
 
     buildFeatures {
@@ -31,7 +31,9 @@ android {
 
 dependencies {
     // Compose / Material 3
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    // Seit 0.12.0 hochgezogen (vorher 2024.06.00) für PullToRefreshBox (Material3), das erst mit
+    // Material3 1.3.0+ existiert - alle bisherigen APIs unverändert kompatibel.
+    implementation(platform("androidx.compose:compose-bom:2024.10.01"))
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")

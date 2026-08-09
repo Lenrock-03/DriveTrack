@@ -5,6 +5,20 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.12.0] - 2026-08-09
+
+### Hinzugefügt
+- **Runterziehen zum Aktualisieren** auf der Fahrtenliste (Home & Fahrten): löst denselben
+  konfliktsicheren Sync wie bisher schon automatisch (Pull-Check-Merge-Push, siehe 0.11.0) manuell
+  aus, statt auf den nächsten automatischen Anlass zu warten - Änderungen von anderen Geräten
+  (z. B. der Web-App) sollen sich einfach und sofort abholen lassen.
+
+### Geändert
+- Compose-BOM auf 2024.10.01 angehoben (vorher 2024.06.00), nötig für `PullToRefreshBox`
+  (Material3, erst ab 1.3.0 verfügbar). Dabei `rememberRipple()` (wurde mit der neuen Version zum
+  Hard-Compile-Error, vorher nur deprecated) durch `LocalIndication.current` ersetzt
+  (`TripListItem.kt`) - keine sichtbare Verhaltensänderung.
+
 ## [0.11.0] - 2026-08-09
 
 ### Geändert

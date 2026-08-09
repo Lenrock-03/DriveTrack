@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,7 +44,11 @@ fun TripListItem(trip: Trip, onClick: () -> Unit, onLongClick: () -> Unit = {}) 
             .padding(vertical = 6.dp)
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = androidx.compose.material.ripple.rememberRipple(),
+                // Ersetzt androidx.compose.material.ripple.rememberRipple() (seit dem Compose-BOM-
+                // Bump auf 2024.10.01 fürs Pull-to-Refresh ein Hard-Error, nicht mehr nur
+                // deprecated) - LocalIndication.current liefert in Material3-Apps standardmäßig
+                // ohnehin eine Ripple-Indication, ganz ohne eigenen Import/Factory-Aufruf.
+                indication = LocalIndication.current,
                 onClick = onClick,
                 onLongClick = onLongClick
             )

@@ -3,12 +3,15 @@ package de.kornelriedl.drivetrack.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.TripOrigin
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,6 +23,7 @@ import de.kornelriedl.drivetrack.ui.components.StatCard
 import de.kornelriedl.drivetrack.ui.components.TripListItem
 import de.kornelriedl.drivetrack.ui.components.formatDurationHm
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     userName: String,
@@ -36,6 +40,8 @@ fun HomeScreen(
     onSelectCar: (Long?) -> Unit,
     onAddCar: (String) -> Unit,
     showDashboard: Boolean = true,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Long-Press-Aktionsmenü: welche Fahrt ist gerade "ausgewählt"
@@ -120,20 +126,37 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (recentTrips.isEmpty()) {
-            Text(
-                text = "Noch keine Fahrten aufgezeichnet.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            LazyColumn {
-                items(recentTrips) { trip ->
-                    TripListItem(
-                        trip = trip,
-                        onClick = { onTripClick(trip) },
-                        onLongClick = { actionTrip = trip }
-                    )
+        // Runterziehen aktualisiert manuell mit dem Server (pull-check-merge-push, siehe
+        // ServerSync.kt) - "Runterziehen" auf beiden Geräten + der "Aktualisieren"-Button in der
+        // Web-App sollen sich einfach/sofort anfühlen, statt auf den nächsten automatischen
+        // Sync-Anlass warten zu müssen. Box mit Modifier.weight(1f), damit PullToRefreshBox eine
+        // konkrete Höhe innerhalb der äußeren (nicht scrollenden) Column bekommt.
+        Box(modifier = Modifier.weight(1f)) {
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (recentTrips.isEmpty()) {
+                    // Muss selbst scrollbar sein, damit die Pull-Geste hier erkannt wird
+                    // (PullToRefreshBox braucht einen Scroll-Container als Kind).
+                    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        Text(
+                            text = "Noch keine Fahrten aufgezeichnet.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(recentTrips) { trip ->
+                            TripListItem(
+                                trip = trip,
+                                onClick = { onTripClick(trip) },
+                                onLongClick = { actionTrip = trip }
+                            )
+                        }
+                    }
                 }
             }
         }

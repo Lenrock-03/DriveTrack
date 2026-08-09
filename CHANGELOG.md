@@ -5,6 +5,19 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.12.1] - 2026-08-09
+
+### Behoben
+- **Aktualisieren zeigte Bearbeitungen von anderen Geräten nicht an**: Der Konflikt-Merge in
+  `ServerSync.syncFullBackupIfPossible()` nutzte bisher `BackupExporter.importBackupFromJson()`
+  (rein additiv - fügt nur komplett neue Fahrten hinzu, überspringt bekannte als "Duplikat").
+  Wurde also z. B. auf der Web-App ein Label an einer schon bekannten Fahrt geändert, hat das
+  Runterziehen/Aktualisieren auf dem Handy diese Änderung nie übernommen, weil die Fahrt (gleicher
+  Start-/Endzeitpunkt) als Duplikat galt und ignoriert wurde. Nutzt jetzt `restoreFromJson()`
+  (überschreibt bekannte Fahrten mit dem neueren Stand statt sie zu überspringen).
+- Runterziehen zeigt jetzt eine kurze Bestätigung ("Aktualisiert" bzw. ein Hinweis, falls kein
+  Server-Backup eingerichtet ist) statt ohne jede Rückmeldung zu wirken.
+
 ## [0.12.0] - 2026-08-09
 
 ### Hinzugefügt

@@ -181,10 +181,15 @@ still nichts (kein Fehler sichtbar, manueller Button bleibt als Fallback):
   `syncFullBackupIfPossible()` ist kein blinder Push mehr, sondern Pull-Check-Merge-Push - lädt
   erst `GET /api/backup` (liefert auch die Server-`id`), vergleicht sie mit der zuletzt bekannten
   (`ServerAuthPreferences.getLastKnownBackupId()`). Weicht sie ab (ein anderes Gerät hat inzwischen
-  gepusht), wird diese Server-Version erst additiv gemergt (`BackupExporter.importBackupFromJson()`
-  - dedupliziert Trips über Start-/Endzeitpunkt, Users/Cars über Namen, überschreibt/löscht nie)
-  und die DB danach frisch gelesen, BEVOR der eigentliche Push passiert - sonst würde jeder
-  Sync-Zyklus unbemerkt fremde Bearbeitungen überschreiben. Bekannte Grenze: kein Feld-Level-Merge
+  gepusht), wird diese Server-Version erst übernommen (`BackupExporter.restoreFromJson()` -
+  dedupliziert Trips über Start-/Endzeitpunkt, Users/Cars über Namen, überschreibt bekannte Fahrten
+  mit dem neueren Stand statt sie als Duplikat zu überspringen) und die DB danach frisch gelesen,
+  BEVOR der eigentliche Push passiert - sonst würde jeder Sync-Zyklus unbemerkt fremde
+  Bearbeitungen überschreiben. **Seit 0.12.1**: hier stand ursprünglich `importBackupFromJson()`
+  (rein additiv) - das ließ Bearbeitungen an einer bereits bekannten Fahrt (z. B. ein auf der
+  Web-App geändertes Label) beim Sync auf einem anderen Gerät einfach verschwinden, weil "gleicher
+  Start-/Endzeitpunkt" als Duplikat übersprungen statt übernommen wurde (Runterziehen wirkte dadurch
+  wirkungslos). `restoreFromJson()` behebt das. Bekannte Grenze: weiterhin kein Feld-Level-Merge
   - wird *dieselbe* Fahrt zwischen zwei Syncs auf zwei Geräten unterschiedlich bearbeitet, gewinnt
   die zeitlich letzte (die überschriebene Zwischenversion bleibt aber über den Versionsverlauf
   wiederherstellbar, siehe unten). Löschungen werden ebenfalls nicht über Merges propagiert (rein

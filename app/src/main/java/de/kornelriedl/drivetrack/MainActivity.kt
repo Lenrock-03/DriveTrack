@@ -257,7 +257,19 @@ fun DriveTrackApp(
         scope.launch {
             isRefreshing = true
             try {
-                triggerBackgroundSync()
+                // Sichtbares Feedback, sonst wirkt "Runterziehen" bei fehlendem Server-Login (der
+                // Sync tut dann still gar nichts, siehe ServerSync.kt) wie ein Bug statt wie
+                // erwartetem Verhalten.
+                if (ServerAuthPreferences.isLoggedIn(context)) {
+                    triggerBackgroundSync()
+                    Toast.makeText(context, "Aktualisiert", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Nicht mit dem Server verbunden (Einstellungen → Server-Backup)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             } finally {
                 isRefreshing = false
             }

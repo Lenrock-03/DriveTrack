@@ -26,14 +26,20 @@ object ServerSync {
      * 2. Keine Version vorhanden ODER deren `id` == der zuletzt von diesem Gerät gesehenen `id`
      *    (`ServerAuthPreferences.getLastKnownBackupId`) → kein Konflikt, wie bisher pushen.
      * 3. `id` weicht ab → ein anderes Gerät hat inzwischen gepusht: Server-Version entschlüsseln
-     *    und additiv in die lokale DB mergen (dieselbe, bereits etablierte Merge-Logik wie beim
-     *    manuellen Wiederherstellen, `BackupExporter.importBackupFromJson()` - dedupliziert Trips
-     *    über Start-/Endzeitpunkt, Users/Cars über Namen, überschreibt nie, löscht nie), danach
-     *    den so gemergten (jetzt vollständigen) Gesamtstand pushen. Die überholte Server-Version
-     *    bleibt dabei unangetastet in der Backup-Historie erhalten (`POST /api/backup` fügt immer
-     *    nur eine neue Zeile hinzu) - das ist die eigentliche "Sicherung ohne Bearbeitungen, die
-     *    bei Konflikten greift": nichts geht je verloren, nur automatisch gemergt statt überschrieben.
+     *    und in die lokale DB übernehmen (`BackupExporter.restoreFromJson()` - dedupliziert Trips
+     *    über Start-/Endzeitpunkt wie beim additiven Import, ÜBERSCHREIBT aber bestehende Fahrten
+     *    mit dem neueren Stand statt sie als Duplikat zu überspringen). Danach den so übernommenen
+     *    (jetzt vollständigen) Gesamtstand pushen. Die überholte Server-Version bleibt dabei
+     *    unangetastet in der Backup-Historie erhalten (`POST /api/backup` fügt immer nur eine neue
+     *    Zeile hinzu) - das ist die eigentliche "Sicherung ohne Bearbeitungen, die bei Konflikten
+     *    greift": nichts geht je verloren, nur automatisch übernommen statt blind überschrieben.
      *
+     *    Bewusst NICHT `importBackupFromJson()` (rein additiv, überschreibt nie): das hätte
+     *    Bearbeitungen an einer schon bekannten Fahrt (z.B. Labels/Markierungen von der Web-App)
+     *    als "Duplikat" (gleicher Start-/Endzeitpunkt) übersprungen statt zu übernehmen - ein
+     *    "Aktualisieren"/Runterziehen hätte dadurch wirkungslos ausgesehen, obwohl der Server
+     *    längst die neuere Version hatte. `restoreFromJson()` ist dafür der richtige Baustein
+     *    (ursprünglich für den manuellen Versionsverlauf gebaut, hier wiederverwendet).
      * `users`/`cars`/`trips` werden bei einem Merge NICHT verwendet (könnten durch den Merge
      * veraltet sein) - stattdessen wird danach frisch aus der DB gelesen. Ohne Konflikt werden sie
      * unverändert wie bisher direkt verwendet (spart einen unnötigen Extra-Read im Normalfall).
@@ -57,7 +63,7 @@ object ServerSync {
                         ivBase64 = latest.json.getString("iv")
                     )
                     val remoteJson = ServerCrypto.decryptWithDek(blob, dek)
-                    BackupExporter.importBackupFromJson(context, remoteJson)
+                    BackupExporter.restoreFromJson(context, remoteJson)
 
                     val db = AppDatabase.getInstance(context)
                     finalUsers = db.userDao().getAllUsers().first()

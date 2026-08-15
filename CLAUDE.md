@@ -79,7 +79,13 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
     dieselbe Farbe auch als Punkt in der Markierungs-Liste). Ein markierter Abschnitt bleibt Teil von
     Distanz/Dauer/Ø-Geschwindigkeit der GESAMTEN Fahrt, wird aber automatisch aus deren `maxSpeedKmh`
     ausgeschlossen (`recomputeMaxSpeedExcludingMarks()`) – Grundmotivation: eine kurze Autofähre soll
-    die Höchstgeschwindigkeits-Statistik der Fahrt nicht verfälschen. Seit 0.9.0 zusätzlich **eigene**
+    die Höchstgeschwindigkeits-Statistik der Fahrt nicht verfälschen. Seit 0.15.1 filtern sowohl
+    `recomputeMaxSpeedExcludingMarks()` als auch der `maxSpeedKmh`-Teil von `applyTripEditPlan()`
+    (Zuschneiden) die Segment-Geschwindigkeiten vor dem Kappen auf `PLAUSIBLE_MAX_CAR_KMH` erst durch
+    denselben Median-Filter wie der Geschwindigkeits-Graph (`List<Double>.medianFilteredSpeeds()`) -
+    vorher konnte ein einzelner Ausreißer dort ungefiltert exakt auf dem 260-km/h-Plateau landen und
+    gespeichert werden, obwohl derselbe Ausreißer im (bereits gefilterten) Graphen gar nicht sichtbar
+    war. Seit 0.9.0 zusätzlich **eigene**
     Statistik je Abschnitt (`Trip.segmentStats()` – Distanz/Dauer/Ø-/Höchstgeschwindigkeit nur
     innerhalb des markierten Zeitraums), angezeigt über die gemeinsame Komponente
     `ui/components/SegmentMarkRow.kt` (genutzt von `TripDetailScreen` read-only und `TripEditScreen`

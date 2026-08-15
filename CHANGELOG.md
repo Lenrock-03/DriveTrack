@@ -5,6 +5,21 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.15.1] - 2026-08-15
+
+### Behoben
+- **Unrealistische Höchstgeschwindigkeit (bis zu 260 km/h) nach dem Zuschneiden/Markieren einer
+  Fahrt**: `applyTripEditPlan()` (Zuschneiden) und `recomputeMaxSpeedExcludingMarks()` (Abschnitt
+  markieren) haben `maxSpeedKmh` bisher aus den rohen, ungefilterten Segment-Geschwindigkeiten neu
+  berechnet und nur auf `PLAUSIBLE_MAX_CAR_KMH` (260 km/h) gekappt - ein einzelner Ausreißer (kurzer
+  ungenauer GPS-Fix oder eine "Teleport"-Geschwindigkeit über eine bereits frühere Schnittkante
+  hinweg) landete dadurch exakt auf diesem 260-km/h-Plateau, obwohl der Geschwindigkeits-Graph
+  (der solche Ausreißer längst per Median-Filter glättet, siehe `medianFiltered()`) gar keinen
+  Peak in dieser Höhe zeigte - daher die sichtbare Diskrepanz zwischen Statistik und Graph. Beide
+  Funktionen wenden jetzt vor dem Kappen denselben Median-Filter an wie der Graph (neue
+  `List<Double>.medianFilteredSpeeds()` in `TripGeoMath.kt`), `applyTripEditPlan()` filtert dabei
+  weiterhin pro zusammenhängendem Lauf statt über Schnittlücken hinweg.
+
 ## [0.15.0] - 2026-08-09
 
 ### Hinzugefügt

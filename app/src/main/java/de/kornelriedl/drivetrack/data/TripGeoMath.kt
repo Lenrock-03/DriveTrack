@@ -89,6 +89,25 @@ fun List<GraphPoint>.medianFiltered(windowRadius: Int = 4): List<GraphPoint> {
     }
 }
 
+/**
+ * Wie medianFiltered() oben, nur direkt auf eine Rohliste von Geschwindigkeitswerten (kein
+ * GraphPoint nötig) - genutzt beim Neuberechnen von maxSpeedKmh nach dem Zuschneiden/Markieren
+ * (siehe recomputeMaxSpeedExcludingMarks()/applyTripEditPlan() weiter unten). Ohne diesen Filter
+ * würde dort ein einzelner Ausreißer (kurzer ungenauer GPS-Fix ODER die künstliche "Teleport"-
+ * Geschwindigkeit an einer Schnittkante, siehe applyTripEditPlan()) ungefiltert auf
+ * PLAUSIBLE_MAX_CAR_KMH gekappt und exakt als dieser Wert gespeichert - ein verdächtiges 260-km/h-
+ * Plateau, obwohl derselbe Ausreißer im Geschwindigkeits-Graphen (der medianFiltered() bereits
+ * anwendet) durch den Median gar nicht mehr auftaucht. Gleiche Fenstergröße wie oben, damit beide
+ * Werte konsistent bleiben.
+ */
+fun List<Double>.medianFilteredSpeeds(windowRadius: Int = 4): List<Double> =
+    mapIndexed { i, _ ->
+        val lo = (i - windowRadius).coerceAtLeast(0)
+        val hi = (i + windowRadius).coerceAtMost(size - 1)
+        val window = subList(lo, hi + 1).sorted()
+        window[window.size / 2]
+    }
+
 // Letzte Sicherheitsgrenze für die Anzeige, bewusst NICHT trip.maxSpeedKmh: dieser Wert kommt zwar
 // normalerweise vom GPS-Chip direkt (Doppler-basiert, robuster als Positions-Differenzen), kann
 // aber selbst durch genau dasselbe GPS-Problem verfälscht sein (z.B. beim Einrasten des Fixes zu
@@ -302,10 +321,18 @@ fun recomputeMaxSpeedExcludingMarks(trip: Trip, context: Context, marks: List<Se
 
     fun inAnyMark(ts: Long) = marks.any { ts in it.startTs..it.endTs }
 
+    // Median-gefiltert wie im Geschwindigkeits-Graphen (siehe medianFilteredSpeeds()-Kommentar) -
+    // sonst kann ein einzelner Ausreißer (GPS-Glitch oder eine bereits frühere Schnittkante im
+    // gespeicherten Track) hier ungefiltert auf PLAUSIBLE_MAX_CAR_KMH gekappt und gespeichert werden,
+    // obwohl der Graph denselben Ausreißer längst weggefiltert hat.
+    val filteredSpeeds = (1 until raw.size)
+        .map { i -> segmentSpeedKmh(raw[i - 1], raw[i]) }
+        .medianFilteredSpeeds()
+
     var max = 0.0
     for (i in 1 until raw.size) {
         if (inAnyMark(raw[i - 1].third) || inAnyMark(raw[i].third)) continue
-        val speed = segmentSpeedKmh(raw[i - 1], raw[i]).coerceAtMost(PLAUSIBLE_MAX_CAR_KMH.toDouble())
+        val speed = filteredSpeeds[i - 1].coerceAtMost(PLAUSIBLE_MAX_CAR_KMH.toDouble())
         if (speed > max) max = speed
     }
     return max
@@ -357,14 +384,23 @@ fun applyTripEditPlan(trip: Trip, context: Context, plan: TripEditPlan): TripEdi
     var maxSpeed = 0.0
     val marksForMaxSpeed = trip.segmentMarks()
     runs.forEach { run ->
+        val runSpeeds = mutableListOf<Double>()
+        val runTouchesMark = mutableListOf<Boolean>()
         for (k in 1 until run.size) {
             val p1 = raw[run[k - 1]]
             val p2 = raw[run[k]]
             totalMeters += haversineMetersPoints(p1, p2)
-            val touchesMark = marksForMaxSpeed.any { m -> p1.third in m.startTs..m.endTs || p2.third in m.startTs..m.endTs }
-            if (!touchesMark) {
-                val speed = segmentSpeedKmh(p1, p2).coerceAtMost(PLAUSIBLE_MAX_CAR_KMH.toDouble())
-                if (speed > maxSpeed) maxSpeed = speed
+            runSpeeds.add(segmentSpeedKmh(p1, p2))
+            runTouchesMark.add(marksForMaxSpeed.any { m -> p1.third in m.startTs..m.endTs || p2.third in m.startTs..m.endTs })
+        }
+        // Median-Filter je Lauf (nicht über den gesamten, ggf. lückenhaften Track hinweg - siehe
+        // Läufe-Kommentar oben) - sonst würde ein einzelner Ausreißer (GPS-Glitch) hier ungefiltert
+        // auf PLAUSIBLE_MAX_CAR_KMH gekappt und exakt als dieser Wert gespeichert, siehe
+        // medianFilteredSpeeds()-Kommentar.
+        runSpeeds.medianFilteredSpeeds().forEachIndexed { idx, speed ->
+            if (!runTouchesMark[idx]) {
+                val clamped = speed.coerceAtMost(PLAUSIBLE_MAX_CAR_KMH.toDouble())
+                if (clamped > maxSpeed) maxSpeed = clamped
             }
         }
     }

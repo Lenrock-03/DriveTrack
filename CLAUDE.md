@@ -87,7 +87,11 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
     gespeichert werden, obwohl derselbe Ausreißer im (bereits gefilterten) Graphen gar nicht sichtbar
     war. Seit 0.9.0 zusätzlich **eigene**
     Statistik je Abschnitt (`Trip.segmentStats()` – Distanz/Dauer/Ø-/Höchstgeschwindigkeit nur
-    innerhalb des markierten Zeitraums), angezeigt über die gemeinsame Komponente
+    innerhalb des markierten Zeitraums; Höchstgeschwindigkeit liest seit 0.15.2 direkt aus derselben
+    median-gefilterten `speedSeriesClamped()`-Serie wie der Graph statt separat aus rohen
+    Segment-Geschwindigkeiten nur dieses – oft kurzen, wenige Randpunkte umfassenden – Abschnitts zu
+    berechnen, garantiert damit denselben Wert wie der sichtbare Peak im hervorgehobenen
+    Graphen-Bereich), angezeigt über die gemeinsame Komponente
     `ui/components/SegmentMarkRow.kt` (genutzt von `TripDetailScreen` read-only und `TripEditScreen`
     mit Lösch-Button). Seit 0.10.0 nicht mehr sofort gespeichert, sondern nur lokaler Bildschirm-
     State (`pendingLabels`/`pendingMarks`) bis zum Verlassen des Screens: `TripEditScreen` registriert

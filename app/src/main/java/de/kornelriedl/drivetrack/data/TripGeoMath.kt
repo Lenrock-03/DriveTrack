@@ -267,6 +267,14 @@ data class SegmentStats(
  * (siehe applyTripEditPlan-Kommentar: nur maxSpeedKmh der GESAMTEN Fahrt schließt Markierungen aus,
  * die Fahrt selbst bleibt unverändert). Dauer kommt bewusst aus mark.startTs/endTs (nicht aus den
  * Punkten), damit sie auch bei nur 0-1 GPS-Punkten im Bereich sinnvoll bleibt.
+ *
+ * Höchstgeschwindigkeit kommt bewusst aus derselben median-gefilterten Serie wie der Geschwindigkeits-
+ * Graph (speedSeriesClamped()), NICHT aus roh berechneten Segment-Geschwindigkeiten nur dieses
+ * Abschnitts - ein separat lokal berechneter Filter hätte an den Rändern des (oft kurzen) Abschnitts
+ * weniger Nachbarpunkte zur Verfügung und würde vom sichtbaren Peak im hervorgehobenen Graphen-
+ * Bereich abweichen (führte z.B. bei einer ruhigen Fährüberfahrt zu einer für den Nutzer
+ * unerklärlichen Höchstgeschwindigkeit von über 70 km/h, obwohl der Graph durchgehend deutlich
+ * niedrigere Werte zeigte).
  */
 fun Trip.segmentStats(context: Context, mark: SegmentMark): SegmentStats {
     val durationMinutes = ((mark.endTs - mark.startTs) / 60000).coerceAtLeast(0)
@@ -274,12 +282,12 @@ fun Trip.segmentStats(context: Context, mark: SegmentMark): SegmentStats {
     if (inRange.size < 2) return SegmentStats(0.0, durationMinutes, 0.0, 0.0)
 
     var distanceMeters = 0.0
-    var maxSpeed = 0.0
     for (i in 1 until inRange.size) {
         distanceMeters += haversineMetersPoints(inRange[i - 1], inRange[i])
-        val speed = segmentSpeedKmh(inRange[i - 1], inRange[i]).coerceAtMost(PLAUSIBLE_MAX_CAR_KMH.toDouble())
-        if (speed > maxSpeed) maxSpeed = speed
     }
+    val maxSpeed = speedSeriesClamped(this, context)
+        .filter { it.timestamp in mark.startTs..mark.endTs }
+        .maxOfOrNull { it.speedKmh.toDouble() } ?: 0.0
     val avgSpeedKmh = if (durationMinutes > 0) (distanceMeters / 1000.0) / (durationMinutes / 60.0) else 0.0
     return SegmentStats(distanceMeters / 1000.0, durationMinutes, avgSpeedKmh, maxSpeed)
 }

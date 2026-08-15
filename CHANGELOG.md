@@ -5,6 +5,21 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.15.2] - 2026-08-15
+
+### Behoben
+- **Unrealistische Höchstgeschwindigkeit eines markierten Abschnitts (z.B. Fähre)**:
+  `Trip.segmentStats()` hat die Höchstgeschwindigkeit eines Abschnitts bisher aus rohen,
+  ungefilterten Segment-Geschwindigkeiten nur der Punkte innerhalb dieses Abschnitts berechnet -
+  ein einzelner GPS-Ausreißer an einem der (oft wenigen) Randpunkte einer kurzen Fährüberfahrt
+  reichte, um eine für den Nutzer unerklärliche Höchstgeschwindigkeit (z.B. 76 km/h) anzuzeigen,
+  während der Graph für denselben Abschnitt durchgehend deutlich niedrigere Werte zeigte (derselbe
+  Ausreißer wird dort bereits per Median-Filter geglättet, siehe 0.15.1). `segmentStats()` liest
+  die Höchstgeschwindigkeit jetzt direkt aus derselben median-gefilterten Serie wie der Graph
+  (`speedSeriesClamped()`), gefiltert auf den Zeitraum des Abschnitts - garantiert exakt denselben
+  Wert wie der sichtbare Peak im hervorgehobenen Graphen-Bereich. Spiegelt sich 1:1 in der Web-App
+  (`computeSegmentStats()`).
+
 ## [0.15.1] - 2026-08-15
 
 ### Behoben

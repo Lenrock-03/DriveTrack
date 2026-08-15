@@ -160,7 +160,14 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   ziehen). `formatTripDateHeading()` (ebenfalls dort) ist aus der bisher inline in
   `TripDetailScreen.kt` stehenden Formatierung extrahiert - beide Stellen nutzen jetzt dieselbe
   Funktion. Spiegelt sich 1:1 in der Web-App (`formatDateHeading()`/`localDayKey()` in `js/app.js`).
-- **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt`
+- **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt` (Car App Library,
+  `PaneTemplate` mit Dauer/Distanz/Geschwindigkeit + Start/Stop-Action). Kategorie im Manifest ist
+  seit 0.16.1 `androidx.car.app.category.IOT` (vorher fälschlich `POI` - dafür sind Root-Screens mit
+  Orts-/Karten-Listen gedacht, nicht eine Aufzeichnungs-Steuerung; IOT passt laut offizieller Doku
+  exakt, deren Beispiel dieselbe CarAppService+PaneTemplate-Kombination zeigt). Für den produktiven
+  Play-Store-Release müsste `createHostValidator()` (aktuell `ALLOW_ALL_HOSTS_VALIDATOR`) durch eine
+  echte Host-Allow-Liste ersetzt werden - für privaten Gebrauch reicht "Unbekannte Quellen zulassen"
+  in den Android-Auto-Entwickler-Einstellungen auf dem Handy.
 - **"Was ist neu"-Dialog** (seit 0.15.0): `data/ReleaseNotes.kt` hält eine kuratierte, für
   Endnutzer verständliche Liste `RELEASE_NOTES` (neueste zuerst) - bewusst NICHT dasselbe wie
   dieses `CHANGELOG.md` (zu technisch, Datei-/Funktionsnamen). Bei jedem Release mit für den

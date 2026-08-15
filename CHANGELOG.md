@@ -5,6 +5,17 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.16.1] - 2026-08-15
+
+### Behoben
+- **DriveTrack erschien nie im Android-Auto-Launcher**: das Android-Auto-`CarAppService` deklarierte
+  bisher fälschlich die Kategorie `androidx.car.app.category.POI` (Points of Interest - für Apps
+  gedacht, deren Root-Screen eine Orts-/Karten-Liste über `PlaceListMapTemplate`/
+  `MapWithContentTemplate` zeigt) statt `androidx.car.app.category.IOT` (Kategorie für
+  Geräte-/Zustand-Steuerungs-Apps wie eine Aufzeichnungs-Fernbedienung, passend zu
+  `RecordingCarScreen.kt`s `PaneTemplate`). Betraf sowohl das Desktop Head Unit als auch die
+  Anzeige im echten Auto, unabhängig von der "Unbekannte Quellen"-Einstellung.
+
 ## [0.16.0] - 2026-08-15
 
 ### Geändert

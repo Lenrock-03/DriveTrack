@@ -67,14 +67,21 @@
             </intent-filter>
         </activity>
 
-        <!-- Android-Auto-Einstiegspunkt -->
+        <!-- Android-Auto-Einstiegspunkt. Kategorie IOT statt (bis 0.16.0) POI: DriveTrack zeigt keine
+             Orte/Points-of-Interest an, sondern startet/überwacht eine GPS-Aufzeichnung - das
+             entspricht laut offizieller Doku genau der Beschreibung von IOT-Apps
+             (developer.android.com/training/cars/apps/iot, dortiges Beispiel nutzt exakt dieselbe
+             Kombination aus CarAppService + PaneTemplate wie RecordingCarScreen.kt hier). POI ist
+             für Apps gedacht, deren Root-Screen eine Orts-/Karten-Liste zeigt (PlaceListMapTemplate/
+             MapWithContentTemplate) - vermutlich der Grund, warum die App trotz korrekt aktivierter
+             "Unbekannte Quellen"-Einstellung nie im Android-Auto-Launcher erschienen ist. -->
         <service
             android:name=".car.DriveTrackCarAppService"
             android:exported="true"
             android:foregroundServiceType="location">
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />
-                <category android:name="androidx.car.app.category.POI" />
+                <category android:name="androidx.car.app.category.IOT" />
             </intent-filter>
         </service>
 

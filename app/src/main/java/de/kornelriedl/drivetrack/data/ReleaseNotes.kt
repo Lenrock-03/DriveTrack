@@ -15,6 +15,12 @@ package de.kornelriedl.drivetrack.data
  */
 val RELEASE_NOTES: List<ReleaseNote> = listOf(
     ReleaseNote(
+        version = "0.16.1",
+        bullets = listOf(
+            "Fehler behoben, durch den DriveTrack nie in Android Auto erschienen ist."
+        )
+    ),
+    ReleaseNote(
         version = "0.16.0",
         bullets = listOf(
             "Markierte Streckenabschnitte (z. B. eine Fähre) sind jetzt eine durchgezogene statt " +

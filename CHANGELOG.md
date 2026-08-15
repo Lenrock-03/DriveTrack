@@ -5,6 +5,21 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.16.0] - 2026-08-15
+
+### Geändert
+- **Markierte Streckenabschnitte (z.B. Fähre) jetzt als durchgezogene statt gestrichelte Linie**:
+  die Signalfarbe (`labelColor()` - Fähre blau) hebt den Abschnitt schon klar genug von der
+  "normalen" Fahrstrecke ab, eine gestrichelte Linie wirkte auf der dunklen Karte eher wie
+  gepunktet und war schwerer zu verfolgen (`buildSegmentMarkOverlays()` in `RouteDetailMap.kt`).
+
+### Hinzugefügt
+- **Markierte Streckenabschnitte jetzt auch auf der Gruppen-Übersichtskarte sichtbar**: vorher
+  zeigte `GroupRouteMap` nur die reinen Routen-Linien der Mitgliedsfahrten, markierte Abschnitte
+  (z.B. eine Fährüberfahrt) waren dort unsichtbar und nur auf der Einzelfahrt-Detailkarte zu sehen.
+  `buildSegmentMarkOverlays()` wurde dafür nicht mehr `private` und wird jetzt von beiden Karten
+  genutzt.
+
 ## [0.15.2] - 2026-08-15
 
 ### Behoben

@@ -15,6 +15,14 @@ package de.kornelriedl.drivetrack.data
  */
 val RELEASE_NOTES: List<ReleaseNote> = listOf(
     ReleaseNote(
+        version = "0.16.0",
+        bullets = listOf(
+            "Markierte Streckenabschnitte (z. B. eine Fähre) sind jetzt eine durchgezogene statt " +
+                "gestrichelte Linie auf der Karte.",
+            "Markierte Streckenabschnitte werden jetzt auch auf der Gruppen-Übersichtskarte angezeigt."
+        )
+    ),
+    ReleaseNote(
         version = "0.15.0",
         bullets = listOf(
             "Beim ersten Öffnen nach einem Update siehst du hier kurz, was sich geändert hat."

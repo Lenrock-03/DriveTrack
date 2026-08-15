@@ -1,6 +1,5 @@
 package de.kornelriedl.drivetrack.ui.components
 
-import android.graphics.DashPathEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -191,8 +190,9 @@ private fun updateAbMarker(
 /**
  * Entfernt die zuvor gezeichnete(n) Routen-Linie(n) und zeichnet sie im gewählten Modus neu
  * (Standard-Farbe oder nach Geschwindigkeit eingefärbt), plus etwaige markierte Streckenabschnitte
- * (z.B. Fähre) als zusätzliche, gestrichelte Linie obendrauf. Wird an Index 0 eingefügt, damit sie
- * immer unter Start-/Ziel-/Scrub-/AB-Marker liegt, egal in welcher Reihenfolge das passiert.
+ * (z.B. Fähre) als zusätzliche, durchgezogene Linie in eigener Signalfarbe obendrauf. Wird an
+ * Index 0 eingefügt, damit sie immer unter Start-/Ziel-/Scrub-/AB-Marker liegt, egal in welcher
+ * Reihenfolge das passiert.
  */
 private fun applyRouteColorMode(
     mapView: MapView,
@@ -226,11 +226,15 @@ private fun applyRouteColorMode(
 }
 
 /**
- * Baut je markiertem Streckenabschnitt (z.B. Fähre) eine gestrichelte Polyline in einer je nach
+ * Baut je markiertem Streckenabschnitt (z.B. Fähre) eine durchgezogene Polyline in einer je nach
  * Markierungs-Typ festen Signalfarbe (labelColor() - Fähre blau, damit sie sofort erkennbar von
- * einer "normalen" Fahrstrecke abweicht).
+ * einer "normalen" Fahrstrecke abweicht). Bewusst durchgezogen statt gestrichelt (bis 0.16.0 per
+ * DashPathEffect) - die Signalfarbe allein hebt den Abschnitt schon klar genug ab, eine gestrichelte
+ * Linie wirkte auf der (ohnehin schon dunklen) Karte eher wie eine gepunktete Linie und war schwerer
+ * zu verfolgen. Nicht mehr `private`, da auch GroupRouteMap.kt (Gruppen-Übersichtskarte) dieselben
+ * Marken-Overlays je Mitgliedsfahrt zeichnet.
  */
-private fun buildSegmentMarkOverlays(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
+internal fun buildSegmentMarkOverlays(mapView: MapView, trip: Trip, context: android.content.Context): List<Polyline> {
     val marks = trip.segmentMarks()
     if (marks.isEmpty()) return emptyList()
     val trackPoints = trip.toTrackPoints(context)
@@ -244,7 +248,6 @@ private fun buildSegmentMarkOverlays(mapView: MapView, trip: Trip, context: andr
             outlinePaint.color = labelColor(mark.label)
             outlinePaint.strokeWidth = 12f
             outlinePaint.isAntiAlias = true
-            outlinePaint.pathEffect = DashPathEffect(floatArrayOf(20f, 14f), 0f)
             setOnClickListener { _, _, _ -> true }
         }
     }

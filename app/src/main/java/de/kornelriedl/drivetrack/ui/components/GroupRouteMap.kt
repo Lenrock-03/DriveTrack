@@ -121,8 +121,10 @@ fun GroupRouteMap(
  * aus RouteDetailMap.kt, JE FAHRT einzeln über deren eigene speedSeriesClamped()-Serie, nicht über
  * die kombinierte Gruppen-Serie - für die Kartenfarbe zählt nur die tatsächliche Geschwindigkeit an
  * jedem Punkt, die "Nahtstellen"-Problematik von buildGroupSpeedSeries() betrifft nur den Graphen).
- * Wird an Index 0 eingefügt, damit sie immer unter dem Scrub-Marker liegen, egal in welcher
- * Reihenfolge das passiert.
+ * Zusätzlich je Mitgliedsfahrt deren markierte Streckenabschnitte (z.B. Fähre) obendrauf - seit
+ * 0.16.0 (vorher nur in der Einzelfahrt-Detailkarte sichtbar, siehe buildSegmentMarkOverlays() in
+ * RouteDetailMap.kt, hier unverändert wiederverwendet). Wird an Index 0 eingefügt, damit sie immer
+ * unter dem Scrub-Marker liegen, egal in welcher Reihenfolge das passiert.
  */
 private fun applyGroupRouteColorMode(
     mapView: MapView,
@@ -136,7 +138,7 @@ private fun applyGroupRouteColorMode(
     val newOverlays = trips.flatMap { trip ->
         val points = trip.toGeoPoints(context)
         if (points.size < 2) return@flatMap emptyList<Polyline>()
-        when (mode) {
+        val baseOverlays = when (mode) {
             RouteColorMode.STANDARD -> listOf(
                 Polyline(mapView).apply {
                     setPoints(points)
@@ -149,6 +151,7 @@ private fun applyGroupRouteColorMode(
             )
             RouteColorMode.SPEED -> buildSpeedColoredSegments(mapView, trip, context)
         }
+        baseOverlays + buildSegmentMarkOverlays(mapView, trip, context)
     }
     mapView.overlays.addAll(0, newOverlays)
     routeOverlaysRef.value = newOverlays

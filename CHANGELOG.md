@@ -5,6 +5,17 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.16.2] - 2026-08-15
+
+### Behoben
+- **Abgelaufener Server-Token ließ den Nutzer auf dem "Entsperren"-Screen hängen**: schlug eine
+  Server-Aktion (Sichern/Wiederherstellen/Version laden) mit 401 fehl - z.B. weil der gespeicherte
+  Token seine 30-Tage-Gültigkeit überschritten hat - zeigte `ServerBackupScreen.kt` bisher nur den
+  rohen Server-Fehlertext ("Token ungültig oder abgelaufen") an, ohne einen Weg zurück anzubieten;
+  jede weitere Aktion scheiterte am selben Punkt. Ein 401 beendet die Session jetzt zentral
+  (`handleSessionExpired()`) und schickt zurück zum Login mit einer klaren Meldung. Spiegelt sich
+  1:1 in der Web-App (v2.2.1).
+
 ## [0.16.1] - 2026-08-15
 
 ### Behoben

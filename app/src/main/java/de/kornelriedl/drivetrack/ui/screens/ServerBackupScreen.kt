@@ -62,6 +62,25 @@ fun ServerBackupScreen(
     var historyList by remember { mutableStateOf<List<Pair<Long, Long>>>(emptyList()) }
     var restoreConfirmId by remember { mutableStateOf<Long?>(null) }
 
+    // Bei einem abgelaufenen/ungültigen Token (401, z.B. weil der gespeicherte Token seine 30-Tage-
+    // Gültigkeit überschritten hat) hier zentral die Session beenden und zurück zum Login schicken,
+    // statt nur den kryptischen Server-Fehlertext ("Token ungültig oder abgelaufen") stehen zu
+    // lassen und den Nutzer auf dem "Entsperren"-Screen festzunageln, wo jede weitere Aktion
+    // ohnehin nur wieder fehlschlagen würde (spiegelt loadAndRenderBackup()s 401-Behandlung in
+    // js/app.js der Web-App). Gibt true zurück, wenn der Fehler so behandelt wurde - der Aufrufer
+    // sollte dann NICHT zusätzlich errorMessage = result.error setzen.
+    fun handleSessionExpired(result: ServerApi.ApiResult): Boolean {
+        if (result.code != 401) return false
+        ServerAuthPreferences.clearSession(context)
+        ServerSession.clear()
+        loggedIn = false
+        unlocked = false
+        mode = "login"
+        infoMessage = null
+        errorMessage = "Sitzung abgelaufen - bitte erneut einloggen"
+        return true
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -286,8 +305,12 @@ fun ServerBackupScreen(
                             val result = withContext(Dispatchers.IO) {
                                 ServerApi.uploadBackup(token, blob.ciphertextBase64, blob.ivBase64)
                             }
-                            infoMessage = if (result.success) "Backup erfolgreich auf dem Server gesichert!" else null
-                            errorMessage = if (!result.success) (result.error ?: "Sichern fehlgeschlagen") else null
+                            if (result.success) {
+                                infoMessage = "Backup erfolgreich auf dem Server gesichert!"
+                                errorMessage = null
+                            } else if (!handleSessionExpired(result)) {
+                                errorMessage = result.error ?: "Sichern fehlgeschlagen"
+                            }
                             isLoading = false
                         }
                     },
@@ -324,7 +347,7 @@ fun ServerBackupScreen(
                                 } catch (e: Exception) {
                                     errorMessage = "Entschlüsseln fehlgeschlagen"
                                 }
-                            } else {
+                            } else if (!handleSessionExpired(result)) {
                                 errorMessage = result.error ?: "Kein Backup auf dem Server gefunden"
                             }
                             isLoading = false
@@ -444,7 +467,7 @@ fun ServerBackupScreen(
                             } catch (e: Exception) {
                                 errorMessage = "Entschlüsseln fehlgeschlagen"
                             }
-                        } else {
+                        } else if (!handleSessionExpired(result)) {
                             errorMessage = result.error ?: "Version konnte nicht geladen werden"
                         }
                         isLoading = false

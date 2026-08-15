@@ -15,6 +15,13 @@ package de.kornelriedl.drivetrack.data
  */
 val RELEASE_NOTES: List<ReleaseNote> = listOf(
     ReleaseNote(
+        version = "0.16.2",
+        bullets = listOf(
+            "Bei abgelaufenem Server-Login führt DriveTrack dich jetzt direkt zurück zum Einloggen, " +
+                "statt auf einer Fehlermeldung hängen zu bleiben."
+        )
+    ),
+    ReleaseNote(
         version = "0.16.1",
         bullets = listOf(
             "Fehler behoben, durch den DriveTrack nie in Android Auto erschienen ist."

@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// CARTO_API_KEY liegt in local.properties (nicht committet, siehe .gitignore) statt im Code -
+// noetig seit CARTO die Dark-Matter-Kartenkacheln nicht mehr ohne Key ausliefert (siehe MapScreen.kt)
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -13,12 +24,15 @@ android {
         applicationId = "de.kornelriedl.drivetrack"
         minSdk = 26
         targetSdk = 34
-        versionCode = 32
-        versionName = "0.16.2"
+        versionCode = 33
+        versionName = "0.16.3"
+
+        buildConfigField("String", "CARTO_API_KEY", "\"${localProperties.getProperty("CARTO_API_KEY", "")}\"")
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -34,10 +34,12 @@ import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 // CartoDB Dark Matter Tiles (Retina/@2x für scharfe Darstellung auf High-DPI-Displays)
-// – passend zum dunklen Material-3-Theme der App, komplett kostenlos, kein API-Key nötig
+// – passend zum dunklen Material-3-Theme der App, weiterhin kostenlos, aber seit CARTO die
+// anonyme Nutzung eingestellt hat NUR noch mit API-Key (sonst Wasserzeichen "API KEY REQUIRED"
+// statt echter Kacheln) - Key kommt aus local.properties/BuildConfig, siehe app/build.gradle.kts
 val DarkMatterTileSource = XYTileSource(
     "CartoDBDarkMatterRetina",
-    0, 20, 512, "@2x.png",
+    0, 20, 512, "@2x.png?key=${de.kornelriedl.drivetrack.BuildConfig.CARTO_API_KEY}",
     arrayOf(
         "https://a.basemaps.cartocdn.com/dark_all/",
         "https://b.basemaps.cartocdn.com/dark_all/",

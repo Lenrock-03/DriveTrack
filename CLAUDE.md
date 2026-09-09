@@ -307,6 +307,13 @@ still nichts (kein Fehler sichtbar, manueller Button bleibt als Fallback):
 - **Server-Backup-Fehler 413 (Payload Too Large)**: Nginx vor der API hat ein eigenes Body-Size-Limit,
   unabhängig vom Express-Limit. Muss auf dem VPS in der Nginx-Config mit `client_max_body_size 15M;`
   gesetzt sein.
+- **Kartenscreens zeigen nur noch "API KEY REQUIRED" als Wasserzeichen** (seit 0.16.3) – CARTO hat die
+  anonyme Nutzung von `basemaps.cartocdn.com` eingestellt. Fix: kostenloser Key von
+  [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey) (kein Account nötig, kommt per Mail),
+  eingetragen in `local.properties` (`CARTO_API_KEY=...`, nicht committet) → `BuildConfig.CARTO_API_KEY`
+  → an `DarkMatterTileSource`s `imageFilenameEnding` angehängt (`MapScreen.kt`). Ohne eigenen Eintrag
+  in `local.properties` bleibt der Key leer und das Wasserzeichen kommt zurück – bei jeder frischen
+  Klon/Neuinstallation des Repos dran denken.
 
 - **Absturz nach sehr langer Fahrt (ganztägig, viele tausend GPS-Punkte), auch beim Neustart** –
   gelöst 2026-08-03. Ursache per `adb logcat` gefunden: `SQLiteBlobTooBigException: Row too big to

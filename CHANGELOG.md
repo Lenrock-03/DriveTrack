@@ -5,6 +5,16 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.16.3] - 2026-09-08
+
+### Behoben
+- **Alle Kartenscreens zeigten nur noch ein "API KEY REQUIRED"-Wasserzeichen statt echter
+  Kacheln**: CARTO hat die anonyme Nutzung der Dark-Matter-Kacheln (`basemaps.cartocdn.com`)
+  eingestellt, ein API-Key ist jetzt Pflicht (weiterhin kostenlos, bis 5 Mio. Kachel-Anfragen/
+  Monat, siehe [carto.com/basemaps/apikey](https://carto.com/basemaps/apikey)). Key liegt jetzt
+  in `local.properties` (nicht committet) und wird über `BuildConfig.CARTO_API_KEY` an die
+  Kachel-URL angehängt (`MapScreen.kt`).
+
 ## [0.16.2] - 2026-08-15
 
 ### Behoben

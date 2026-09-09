@@ -2,3 +2,6 @@
 /.gradle/
 /app/build/
 /app/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/
+
+# Enthaelt den lokalen SDK-Pfad UND (seit CARTO_API_KEY) ein Geheimnis - nie committen
+/local.properties

@@ -230,7 +230,10 @@ object MapThumbnailGenerator {
     private fun fetchTile(zoom: Int, x: Int, y: Int): Bitmap? {
         return try {
             val server = listOf("a", "b", "c").random()
-            val url = URL("https://$server.basemaps.cartocdn.com/dark_all/$zoom/$x/$y.png")
+            // Eigene, von DarkMatterTileSource (MapScreen.kt) unabhaengige Kachel-URL, da osmdroid-
+            // TileSources nicht direkt fuer synchrone Einzelabrufe gedacht sind - braucht denselben
+            // CARTO-Key trotzdem manuell, sonst nur Wasserzeichen (siehe dortiger Kommentar)
+            val url = URL("https://$server.basemaps.cartocdn.com/dark_all/$zoom/$x/$y.png?key=${de.kornelriedl.drivetrack.BuildConfig.CARTO_API_KEY}")
             val connection = url.openConnection().apply {
                 connectTimeout = 5000
                 readTimeout = 5000

@@ -5,6 +5,16 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.16.4] - 2026-09-09
+
+### Behoben
+- **Fahrten-Vorschaubilder (Mini-Karten in der Fahrtenliste) zeigten nach Neu-Generierung weiterhin
+  "API KEY REQUIRED"**: `MapThumbnailGenerator.kt::fetchTile()` baut die Kachel-URL unabhängig von
+  `DarkMatterTileSource` (MapScreen.kt) - der 0.16.3-Fix hatte diese zweite Stelle übersehen. Alte,
+  bereits vor dem CARTO-Änderung gecachte Thumbnails sahen deshalb weiter unauffällig aus, jedes neu
+  generierte (nach Zuschneiden, oder eine neue Fahrt) bekam aber das Wasserzeichen. Hängt jetzt
+  denselben `BuildConfig.CARTO_API_KEY` an.
+
 ## [0.16.3] - 2026-09-08
 
 ### Behoben

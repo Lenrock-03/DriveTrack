@@ -160,6 +160,14 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   ziehen). `formatTripDateHeading()` (ebenfalls dort) ist aus der bisher inline in
   `TripDetailScreen.kt` stehenden Formatierung extrahiert - beide Stellen nutzen jetzt dieselbe
   Funktion. Spiegelt sich 1:1 in der Web-App (`formatDateHeading()`/`localDayKey()` in `js/app.js`).
+- **Bluetooth-Auto-Start ohne Rückfrage** (seit 0.19.0): `tracking/CompanionAutoStart.kt`. Android
+  verbietet seit 12 den Start eines Standort-Foreground-Service aus dem Hintergrund (deshalb
+  ursprünglich nur eine Start-Notification, siehe `BluetoothConnectionReceiver`). Ausnahme: App per
+  `CompanionDeviceManager` mit dem Auto-Radio verknüpft + Standort "Immer zulassen" - einmalig
+  eingerichtet über "Ohne Nachfrage starten" in `CarDetailScreen`. Dann startet
+  `BluetoothConnectionReceiver` direkt (`TripTrackingService.startAutomatically()`), sonst wie
+  vorher die Notification. Scheitert `startForeground()` trotzdem, verwirft der Service die
+  Aufzeichnung und zeigt die Notification (kein Absturz).
 - **Android Auto**: `car/DriveTrackCarAppService.kt` + `car/RecordingCarScreen.kt` (Car App Library,
   `PaneTemplate` mit Dauer/Distanz/Geschwindigkeit + Start/Stop-Action). Kategorie im Manifest ist
   seit 0.16.1 `androidx.car.app.category.IOT` (vorher fälschlich `POI` - dafür sind Root-Screens mit

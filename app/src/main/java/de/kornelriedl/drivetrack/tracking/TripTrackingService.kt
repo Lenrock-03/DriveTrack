@@ -63,7 +63,24 @@ class TripTrackingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, buildNotification())
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        } catch (e: Exception) {
+            // Nur beim Bluetooth-Direktstart denkbar (siehe CompanionAutoStart), z. B. wenn
+            // Android trotz Companion-Verknüpfung den Standort im Hintergrund verweigert. Statt
+            // abzustürzen: die gerade erst begonnene Aufzeichnung verwerfen und wie früher per
+            // Start-Notification fragen.
+            if (intent?.action == ACTION_AUTO_START && tracker.isRecording) {
+                tracker.stop()
+                BluetoothConnectionReceiver.showStartPrompt(
+                    this,
+                    intent.getLongExtra(EXTRA_CAR_ID, -1L),
+                    intent.getStringExtra(EXTRA_CAR_NAME) ?: "Auto"
+                )
+            }
+            stopSelf()
+            return START_NOT_STICKY
+        }
         handler.post(notificationUpdater)
         startLiveSyncLoop()
         when (intent?.action) {
@@ -224,11 +241,27 @@ class TripTrackingService : Service() {
 
         private const val ACTION_SCHEDULE_DISCONNECT_STOP = "de.kornelriedl.drivetrack.action.SCHEDULE_DISCONNECT_STOP"
         private const val ACTION_CANCEL_DISCONNECT_STOP = "de.kornelriedl.drivetrack.action.CANCEL_DISCONNECT_STOP"
+        private const val ACTION_AUTO_START = "de.kornelriedl.drivetrack.action.AUTO_START"
         private const val EXTRA_CAR_ID = "car_id"
+        private const val EXTRA_CAR_NAME = "car_name"
         private const val DISCONNECT_GRACE_MS = 10_000L // Aussetzer-Schutz, siehe scheduleDisconnectStop()
 
         fun start(context: Context) {
             val intent = Intent(context, TripTrackingService::class.java)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        /**
+         * Direktstart aus dem Hintergrund durch BluetoothConnectionReceiver (siehe
+         * CompanionAutoStart). Auto-Id/-Name nur für den Rückfall auf die Start-Notification, falls
+         * startForeground() doch scheitert. Kann selbst schon ForegroundServiceStartNotAllowedException
+         * werfen - fängt der Aufrufer ab.
+         */
+        fun startAutomatically(context: Context, carId: Long, carName: String) {
+            val intent = Intent(context, TripTrackingService::class.java)
+                .setAction(ACTION_AUTO_START)
+                .putExtra(EXTRA_CAR_ID, carId)
+                .putExtra(EXTRA_CAR_NAME, carName)
             ContextCompat.startForegroundService(context, intent)
         }
 

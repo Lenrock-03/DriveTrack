@@ -15,6 +15,14 @@ package de.kornelriedl.drivetrack.data
  */
 val RELEASE_NOTES: List<ReleaseNote> = listOf(
     ReleaseNote(
+        version = "0.19.0",
+        bullets = listOf(
+            "Die Aufzeichnung kann jetzt ganz ohne Tipp auf die Benachrichtigung starten, sobald " +
+                "sich das Handy mit dem Auto verbindet. Einmalig einrichten: Einstellungen → " +
+                "Fahrzeuge → dein Auto → „Ohne Nachfrage starten“."
+        )
+    ),
+    ReleaseNote(
         version = "0.16.2",
         bullets = listOf(
             "Bei abgelaufenem Server-Login führt DriveTrack dich jetzt direkt zurück zum Einloggen, " +

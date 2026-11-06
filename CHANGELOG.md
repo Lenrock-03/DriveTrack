@@ -5,6 +5,19 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.19.0] - 2026-11-06
+
+### Hinzugefügt
+- **Bluetooth-Auto-Start ohne Rückfrage**: Die Aufzeichnung kann jetzt direkt beim Verbinden mit
+  dem Auto-Radio starten, ohne Tipp auf die "Aufzeichnung starten"-Notification. Einmalige
+  Einrichtung über den neuen Button "Ohne Nachfrage starten" auf der Fahrzeug-Seite: verknüpft
+  die App per `CompanionDeviceManager` mit dem Gerät (System-Bestätigungsdialog) und fragt
+  Standortzugriff "Immer zulassen" an - zusammen die offizielle Ausnahme von Androids Verbot,
+  einen Standort-Foreground-Service aus dem Hintergrund zu starten
+  (`tracking/CompanionAutoStart.kt`). Ohne Einrichtung bleibt alles wie bisher (Start-
+  Notification). Scheitert ein Direktstart trotzdem, fällt `TripTrackingService` auf die
+  Start-Notification zurück statt abzustürzen. Der "Verwerfen"-Button für Fehlstarts bleibt.
+
 ## [0.18.0] - 2026-09-16
 
 ### Hinzugefügt

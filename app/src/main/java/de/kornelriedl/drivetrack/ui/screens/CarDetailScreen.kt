@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -39,6 +40,7 @@ import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
 import de.kornelriedl.drivetrack.data.Car
+import de.kornelriedl.drivetrack.tracking.CompanionAutoStart
 import de.kornelriedl.drivetrack.ui.components.CarPhoto
 import de.kornelriedl.drivetrack.ui.components.SettingsSectionCard
 import de.kornelriedl.drivetrack.ui.components.StatCard
@@ -215,6 +217,10 @@ fun CarDetailScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Gerät auswählen")
+                }
+                car.bluetoothDeviceAddress?.let { address ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    StartWithoutPromptSetup(address = address)
                 }
             }
 
@@ -436,6 +442,86 @@ private fun BluetoothDevicePickerDialog(
             }
         }
     )
+}
+
+/**
+ * Einmalige Einrichtung, damit der Bluetooth-Auto-Start ganz ohne Tipp auf die Start-Notification
+ * auskommt (seit 0.19.0, siehe CompanionAutoStart): erst die System-Verknüpfung mit dem Gerät,
+ * danach Standortzugriff "Immer zulassen". Fehlt eins davon, startet die Aufzeichnung weiterhin
+ * per Notification - die Einrichtung ist also rein optional.
+ */
+@Composable
+private fun StartWithoutPromptSetup(address: String) {
+    val context = LocalContext.current
+    var associated by remember(address) { mutableStateOf(CompanionAutoStart.isAssociated(context, address)) }
+    var hasBackgroundLocation by remember { mutableStateOf(CompanionAutoStart.hasBackgroundLocation(context)) }
+    var setupError by remember(address) { mutableStateOf<String?>(null) }
+
+    val backgroundLocationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasBackgroundLocation = granted || CompanionAutoStart.hasBackgroundLocation(context)
+        if (!hasBackgroundLocation) {
+            setupError = "Bitte in den App-Einstellungen von DriveTrack unter „Standort“ " +
+                "„Immer zulassen“ wählen."
+        }
+    }
+    val requestBackgroundLocation = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        }
+    }
+    val associationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) {
+        associated = CompanionAutoStart.isAssociated(context, address)
+        if (associated && !hasBackgroundLocation) requestBackgroundLocation()
+    }
+
+    if (associated && hasBackgroundLocation) {
+        Text(
+            text = "Startet ohne Nachfrage",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        return
+    }
+
+    Text(
+        text = "Aktuell startet die Aufzeichnung erst nach Tipp auf eine Benachrichtigung. " +
+            "Für einen Start ganz ohne Nachfrage einmalig einrichten (Gerät verknüpfen und " +
+            "Standort „Immer zulassen“).",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Button(
+        onClick = {
+            setupError = null
+            if (!associated) {
+                CompanionAutoStart.requestAssociation(
+                    context, address,
+                    onConfirmationNeeded = { sender ->
+                        associationLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                    },
+                    onFailure = { setupError = it }
+                )
+            } else {
+                requestBackgroundLocation()
+            }
+        },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Ohne Nachfrage starten")
+    }
+    setupError?.let {
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
 }
 
 private fun hasBluetoothConnectPermission(context: Context): Boolean {

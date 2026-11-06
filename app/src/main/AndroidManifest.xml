@@ -22,6 +22,14 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
+    <!-- Bluetooth-Auto-Start OHNE Rückfrage-Notification (seit 0.19.0, siehe CompanionAutoStart):
+         eine per CompanionDeviceManager mit dem Auto-Radio verknüpfte App darf mit diesen
+         (normalen, automatisch erteilten) Berechtigungen ihren Standort-Foreground-Service auch
+         aus dem Hintergrund starten. -->
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND" />
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND" />
+    <uses-feature android:name="android.software.companion_device_setup" android:required="false" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

@@ -5,6 +5,27 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/), Versionieru
 [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`, sichtbar als `versionName` in
 `build.gradle.kts` sowie unten in den Einstellungen der App).
 
+## [0.18.0] - 2026-09-16
+
+### Hinzugefügt
+- Nicht manuell umbenannte Fahrten (weiterhin schlicht "Fahrt") bekommen jetzt automatisch einen
+  Namen "Fahrt von [Startort] nach [Zielort]" anhand der Start-/Endkoordinaten (Reverse-Geocoding
+  über Androids Geocoder, kein eigener API-Key nötig). Gilt für neu aufgezeichnete Fahrten (egal ob
+  manuell, per Bluetooth-Auto-Start oder über Android Auto gestartet) sowie - per neuem Button
+  "Fahrtnamen automatisch vergeben" in Einstellungen → Import & Export → "Fahrtnamen" - rückwirkend
+  für bestehende Fahrten.
+
+## [0.17.0] - 2026-09-16
+
+### Hinzugefügt
+- Aufzeichnung wird automatisch beendet und gespeichert, sobald sich das Handy von einem Auto
+  zugeordneten Bluetooth-Gerät trennt (`BluetoothDisconnectionReceiver`, Gegenstück zum
+  bestehenden automatischen Start) - unabhängig davon, ob die Aufzeichnung per Bluetooth
+  automatisch oder manuell gestartet wurde. Ein kurzer Bluetooth-Aussetzer (10s) beendet die
+  Fahrt dabei nicht sofort - ein Wiederverbinden innerhalb der Frist hebt den automatischen
+  Stopp wieder auf. Über einen neuen Schalter in Einstellungen → Fahrzeuge ("Automatisches
+  Beenden") komplett abschaltbar, Standard: an.
+
 ## [0.16.4] - 2026-09-09
 
 ### Behoben

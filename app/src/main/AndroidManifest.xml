@@ -102,6 +102,17 @@
             </intent-filter>
         </receiver>
 
+        <!-- Gegenstück: merkt vor, eine laufende Aufzeichnung zu beenden, sobald sich das Handy
+             von einem Auto zugeordneten Bluetooth-Gerät trennt. exported=true aus demselben Grund
+             wie oben (protected broadcast, kann trotzdem nur vom System gesendet werden). -->
+        <receiver
+            android:name=".tracking.BluetoothDisconnectionReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Nur für den "Verwerfen"-Button in der Aufzeichnungs-Notification, per PendingIntent
              ausgelöst -> muss nicht exportiert sein. -->
         <receiver

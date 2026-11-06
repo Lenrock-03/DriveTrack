@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -33,6 +34,8 @@ fun ImportExportScreen(
     onImportGpx: (Uri) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: (Uri) -> Unit,
+    onBackfillTripNames: () -> Unit,
+    tripNamingProgress: Pair<Int, Int>?,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -112,6 +115,48 @@ fun ImportExportScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Alle Fahrten exportieren (.zip)")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            val unnamedCount = trips.count { it.name == "Fahrt" }
+            SettingsSectionCard(
+                title = "Fahrtnamen",
+                description = if (unnamedCount == 0)
+                    "Alle Fahrten haben bereits einen Namen."
+                else
+                    "$unnamedCount Fahrt(en) heißen noch schlicht \"Fahrt\" - Namen anhand von " +
+                        "Start-/Zielort automatisch vergeben (\"Fahrt von X nach Y\").",
+                icon = Icons.Filled.Place
+            ) {
+                Spacer(modifier = Modifier.height(8.dp))
+                if (tripNamingProgress != null) {
+                    val (done, total) = tripNamingProgress
+                    LinearProgressIndicator(
+                        progress = { if (total > 0) done / total.toFloat() else 0f },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "$done / $total",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    OutlinedButton(
+                        onClick = onBackfillTripNames,
+                        enabled = unnamedCount > 0,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Place,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Fahrtnamen automatisch vergeben")
+                    }
                 }
             }
 

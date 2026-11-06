@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.kornelriedl.drivetrack.data.Trip
 import de.kornelriedl.drivetrack.data.labelIcon
@@ -67,7 +68,17 @@ fun TripListItem(trip: Trip, onClick: () -> Unit, onLongClick: () -> Unit = {}) 
                     Text(
                         text = trip.name,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        // Automatisch vergebene Namen ("Fahrt von X nach Y", siehe TripNaming.kt)
+                        // können deutlich länger sein als das bisherige schlichte "Fahrt" - das
+                        // weight() begrenzt die Breite VOR der Dauer daneben (sonst quetschte ein
+                        // langer Name die Dauer in eine schmale, zeichenweise umgebrochene Spalte),
+                        // maxLines=2 erlaubt einen echten Zeilenumbruch statt sofortiger "..."-
+                        // Kürzung - Row bleibt oben ausgerichtet (Default), Dauer sitzt dadurch
+                        // sauber neben der ersten Zeile statt vertikal zentriert "schwebend".
+                        modifier = Modifier.weight(1f, fill = false).padding(end = 8.dp)
                     )
                     Text(
                         text = trip.durationFormatted,

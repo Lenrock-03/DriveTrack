@@ -168,6 +168,42 @@ Alle drei teilen sich dasselbe JSON-Backup-Format und dasselbe Verschlüsselungs
   Play-Store-Release müsste `createHostValidator()` (aktuell `ALLOW_ALL_HOSTS_VALIDATOR`) durch eine
   echte Host-Allow-Liste ersetzt werden - für privaten Gebrauch reicht "Unbekannte Quellen zulassen"
   in den Android-Auto-Entwickler-Einstellungen auf dem Handy.
+- **Bluetooth-Auto-Start/-Stopp**: `tracking/BluetoothConnectionReceiver.kt` (ACL_CONNECTED) zeigt
+  beim Verbinden mit einem Auto zugeordneten Gerät eine Notification mit Start-Button statt direkt
+  zu starten - seit Android 12 darf ein Foreground-Service vom Typ "location" nicht aus dem
+  Hintergrund gestartet werden, auch nicht aus einem BroadcastReceiver; ein Notification-Tap zählt
+  aber als Nutzer-Interaktion und ist davon ausgenommen (siehe `StartRecordingFromNotificationReceiver`).
+  Seit 0.17.0 gibt es das Gegenstück: `tracking/BluetoothDisconnectionReceiver.kt` (ACL_DISCONNECTED)
+  beendet und speichert eine laufende Aufzeichnung automatisch, sobald sich dasselbe Gerät trennt -
+  unabhängig davon, ob die Aufzeichnung automatisch oder manuell gestartet wurde. Anders als beim
+  Start ist hier KEIN Notification-Umweg nötig (einen bereits laufenden Foreground-Service zu
+  STOPPEN ist auch aus dem Hintergrund erlaubt), das eigentliche Beenden läuft daher direkt in
+  `TripTrackingService` (`scheduleAutoStopOnDisconnect()`/`cancelPendingAutoStop()`) statt im
+  Receiver: der Service lebt ohnehin während der gesamten Aufzeichnung und kann daher - anders als
+  ein `goAsync()`-Receiver mit seinem harten System-Zeitlimit von wenigen Sekunden - eine kurze,
+  abbrechbare Verzögerung (`DISCONNECT_GRACE_MS`, 10s) einbauen: schützt vor kurzen
+  Bluetooth-Aussetzern, ein Wiederverbinden innerhalb der Frist hebt den vorgemerkten Stopp über
+  `cancelPendingAutoStop()` wieder auf (aufgerufen aus `BluetoothConnectionReceiver`, das dafür bei
+  bereits laufender Aufzeichnung nicht mehr sofort abbricht, sondern die Auto-Zuordnung weiter
+  prüft). Über `data/TrackingPreferences.kt` (Schalter "Automatisches Beenden" in
+  Einstellungen → Fahrzeuge) komplett abschaltbar, Standard: an.
+- **Automatische Fahrtnamen** (seit 0.18.0): `data/TripNaming.kt::suggestTripName(context, points)`
+  schlägt für nicht manuell umbenannte Fahrten (Erkennungsmerkmal: `Trip.name == "Fahrt"`, der
+  Default-String - keine eigene Datenbank-Markierung) einen Namen "Fahrt von X nach Y" vor, per
+  Reverse-Geocoding der Start-/Endkoordinaten über `android.location.Geocoder` (läuft über Play
+  Services, kein eigener API-Key/Account nötig, anders als z. B. die CARTO-Kartenkacheln). Ortsname
+  je Koordinate: `locality ?: subAdminArea ?: adminArea` (Stadt → Landkreis → Bundesland als
+  Fallback). Schlägt eine Seite fehl (kein Netz, kein Ergebnis), bleibt der Name "Fahrt" statt eines
+  asymmetrischen Namens - deckt sich dadurch automatisch mit dem manuellen Wiederholungsfall.
+  Aufgerufen an allen drei Stellen, die eine Aufzeichnung speichern (`MainActivity.kt`
+  `onRecordingFinished`, `car/RecordingCarScreen.kt`, `tracking/TripTrackingService.kt`s
+  Bluetooth-Auto-Stopp) - der Name wird VOR `RecordingResult.toTrip(name = ..., ...)` berechnet,
+  nicht per nachträglichem `trip.copy()` (das würde `Trip.gpxTrackJson`, ein `@Ignore var` außerhalb
+  des Konstruktors, auf "" zurücksetzen). Rückwirkend für bestehende Fahrten: Button "Fahrtnamen
+  automatisch vergeben" in `ImportExportScreen.kt` (Einstellungen → Import & Export → "Fahrtnamen"),
+  arbeitet alle `name == "Fahrt"`-Fahrten sequenziell ab (Fortschrittsanzeige, `MainActivity.kt`s
+  `onBackfillTripNames`) und synct einmal am Ende. GPX-Importe sind NICHT betroffen (eigener Default
+  "Importierte Fahrt", fällt nicht unter `name == "Fahrt"`).
 - **"Was ist neu"-Dialog** (seit 0.15.0): `data/ReleaseNotes.kt` hält eine kuratierte, für
   Endnutzer verständliche Liste `RELEASE_NOTES` (neueste zuerst) - bewusst NICHT dasselbe wie
   dieses `CHANGELOG.md` (zu technisch, Datei-/Funktionsnamen). Bei jedem Release mit für den

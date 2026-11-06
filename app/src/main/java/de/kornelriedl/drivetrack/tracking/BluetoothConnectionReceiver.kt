@@ -43,28 +43,38 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
         val address = device?.address ?: return
 
         val tracker = LocationTracker.getInstance(context)
-        if (tracker.isRecording) return // läuft schon eine Aufzeichnung -> nichts tun
-
-        if (ContextCompat.checkSelfPermission(
-                context, Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) return // Standortzugriff (noch) nicht erteilt -> kann so oder so nicht aufzeichnen
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) return // ohne Notification-Berechtigung können wir den Nutzer nicht fragen
 
         // onReceive muss schnell zurückkehren; die DB-Abfrage ist aber suspend/async -> goAsync()
-        // hält den Receiver-Prozess am Leben, bis die Coroutine fertig ist.
+        // hält den Receiver-Prozess am Leben, bis die Coroutine fertig ist. Läuft bewusst auch bei
+        // bereits laufender Aufzeichnung durch (statt hier synchron abzubrechen) - ein
+        // Wiederverbinden desselben Auto-Geräts muss einen ggf. vorgemerkten automatischen Stopp
+        // (siehe TripTrackingService/BluetoothDisconnectionReceiver) noch aufheben können.
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val car = AppDatabase.getInstance(context).carDao().getCarByBluetoothAddress(address)
-                if (car != null && !tracker.isRecording) {
-                    showStartPrompt(context, car)
+                if (car == null) return@launch // kein zugeordnetes Auto -> nichts tun
+
+                if (tracker.isRecording) {
+                    // Läuft schon eine Aufzeichnung - falls wegen eines kurzen Bluetooth-Aussetzers
+                    // gerade ein automatischer Stopp vorgemerkt ist (Aussetzer-Schutz), hebt das
+                    // Wiederverbinden desselben Auto-Geräts diesen wieder auf.
+                    TripTrackingService.cancelPendingAutoStop(context)
+                    return@launch
                 }
+
+                if (ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.ACCESS_FINE_LOCATION
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) return@launch // Standortzugriff (noch) nicht erteilt -> kann so oder so nicht aufzeichnen
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) return@launch // ohne Notification-Berechtigung können wir den Nutzer nicht fragen
+
+                showStartPrompt(context, car)
             } finally {
                 pendingResult.finish()
             }

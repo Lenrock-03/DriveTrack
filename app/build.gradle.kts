@@ -24,8 +24,8 @@ android {
         applicationId = "de.kornelriedl.drivetrack"
         minSdk = 26
         targetSdk = 34
-        versionCode = 34
-        versionName = "0.16.4"
+        versionCode = 36
+        versionName = "0.18.0"
 
         buildConfigField("String", "CARTO_API_KEY", "\"${localProperties.getProperty("CARTO_API_KEY", "")}\"")
     }

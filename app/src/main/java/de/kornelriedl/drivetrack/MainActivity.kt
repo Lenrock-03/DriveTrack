@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import de.kornelriedl.drivetrack.data.Car
 import de.kornelriedl.drivetrack.data.CarPreferences
+import de.kornelriedl.drivetrack.data.TrackingPreferences
+import de.kornelriedl.drivetrack.data.suggestTripName
 import de.kornelriedl.drivetrack.data.ReleaseNote
 import de.kornelriedl.drivetrack.data.ReleaseNotesPreferences
 import de.kornelriedl.drivetrack.data.SegmentMark
@@ -56,6 +58,7 @@ import de.kornelriedl.drivetrack.ui.screens.TripEditScreen
 import de.kornelriedl.drivetrack.ui.screens.TripGroupDetailScreen
 import de.kornelriedl.drivetrack.ui.screens.TripGroupPickerScreen
 import de.kornelriedl.drivetrack.ui.screens.TripGroupRouteScreen
+import de.kornelriedl.drivetrack.ui.screens.toTrackPoints
 import de.kornelriedl.drivetrack.ui.theme.DriveTrackTheme
 import de.kornelriedl.drivetrack.tracking.LocationTracker
 import kotlinx.coroutines.Dispatchers
@@ -189,6 +192,14 @@ fun DriveTrackApp(
     val onSetDefaultCar: (Long?) -> Unit = { id ->
         defaultCarId = id
         CarPreferences.setDefaultCarId(context, id)
+    }
+    // Ein-/Ausschalter für BluetoothDisconnectionReceiver (siehe dort) - Standard an.
+    var autoStopOnDisconnect by remember {
+        mutableStateOf(TrackingPreferences.isAutoStopOnDisconnectEnabled(context))
+    }
+    val onSetAutoStopOnDisconnect: (Boolean) -> Unit = { enabled ->
+        autoStopOnDisconnect = enabled
+        TrackingPreferences.setAutoStopOnDisconnectEnabled(context, enabled)
     }
     // Nur die Id merken, nicht das Car-Objekt: CarDetailScreen liest das aktuelle Car live aus
     // dem cars-Flow, keine manuelle Nachpflege wie bei selectedTrip nötig. Bewusst NICHT
@@ -395,6 +406,36 @@ fun DriveTrackApp(
                 "Backup konnte nicht gelesen werden"
             }
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Fortschritt des unten stehenden Backfills (aktuell/gesamt) - null = läuft gerade nicht.
+    // Siehe suggestTripName() in data/TripNaming.kt für den eigentlichen Reverse-Geocoding-Schritt.
+    var tripNamingProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    val onBackfillTripNames: () -> Unit = {
+        scope.launch {
+            // Frisch aus der DB statt der Compose-State-Liste: dieselbe Vorsicht wie beim
+            // Sync/Import (siehe triggerBackgroundSync-Kommentar) - hier weniger kritisch, aber
+            // konsistent mit dem übrigen Code.
+            val unnamed = withContext(Dispatchers.IO) { tripDao.getAllTrips().first() }.filter { it.name == "Fahrt" }
+            if (unnamed.isEmpty()) {
+                Toast.makeText(context, "Keine unbenannten Fahrten gefunden", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            var renamed = 0
+            unnamed.forEachIndexed { index, trip ->
+                tripNamingProgress = index to unnamed.size
+                withContext(Dispatchers.IO) {
+                    val points = trip.toTrackPoints(context)
+                    suggestTripName(context, points)?.let { name ->
+                        tripDao.updateTrip(trip.copy(name = name))
+                        renamed++
+                    }
+                }
+            }
+            tripNamingProgress = null
+            triggerBackgroundSync()
+            Toast.makeText(context, "$renamed von ${unnamed.size} Fahrten benannt", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -616,6 +657,8 @@ fun DriveTrackApp(
             onImportGpx = importGpx,
             onExportBackup = onExportBackup,
             onImportBackup = onImportBackup,
+            onBackfillTripNames = onBackfillTripNames,
+            tripNamingProgress = tripNamingProgress,
             onBack = { showImportExport = false }
         )
         return
@@ -699,7 +742,8 @@ fun DriveTrackApp(
                 tracker = tracker,
                 onRecordingFinished = { result ->
                     scope.launch {
-                        val trip = result.toTrip(carId = selectedCarId)
+                        val suggestedName = withContext(Dispatchers.IO) { suggestTripName(context, result.points) }
+                        val trip = result.toTrip(name = suggestedName ?: "Fahrt", carId = selectedCarId)
                         val newId = tripDao.insertTrip(trip)
                         withContext(Dispatchers.IO) { TrackFileStore.write(context, newId, trip.gpxTrackJson) }
                         // Frisch aus der DB laden statt der Compose-State-Listen zu nehmen: die
@@ -742,6 +786,8 @@ fun DriveTrackApp(
                 onDeleteUser = onDeleteUser,
                 onOpenServerBackup = { showServerBackup = true },
                 onOpenImportExport = { showImportExport = true },
+                autoStopOnDisconnect = autoStopOnDisconnect,
+                onSetAutoStopOnDisconnect = onSetAutoStopOnDisconnect,
                 modifier = Modifier.padding(padding)
             )
         }

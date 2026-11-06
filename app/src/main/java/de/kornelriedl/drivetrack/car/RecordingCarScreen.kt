@@ -17,6 +17,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import de.kornelriedl.drivetrack.data.local.TrackFileStore
 import de.kornelriedl.drivetrack.data.local.TripDao
+import de.kornelriedl.drivetrack.data.suggestTripName
 import de.kornelriedl.drivetrack.data.toTrip
 import de.kornelriedl.drivetrack.tracking.LocationTracker
 import de.kornelriedl.drivetrack.tracking.TripTrackingService
@@ -92,7 +93,8 @@ class RecordingCarScreen(
                             val result = tracker.stop()
                             TripTrackingService.stop(carContext)
                             CoroutineScope(Dispatchers.IO).launch {
-                                val trip = result.toTrip()
+                                val suggestedName = suggestTripName(carContext, result.points)
+                                val trip = result.toTrip(name = suggestedName ?: "Fahrt")
                                 val newId = tripDao.insertTrip(trip)
                                 TrackFileStore.write(carContext, newId, trip.gpxTrackJson)
                             }

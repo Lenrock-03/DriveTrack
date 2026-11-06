@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
@@ -44,6 +45,8 @@ fun SettingsScreen(
     onDeleteUser: (UserProfile) -> Unit,
     onOpenServerBackup: () -> Unit,
     onOpenImportExport: () -> Unit,
+    autoStopOnDisconnect: Boolean,
+    onSetAutoStopOnDisconnect: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -200,6 +203,30 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Fahrzeug hinzufügen")
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        SettingsSectionCard(title = "Automatisches Beenden", icon = Icons.Filled.BluetoothDisabled) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Bei Bluetooth-Trennung beenden",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Aufzeichnung automatisch beenden und speichern, wenn sich das Handy " +
+                            "von einem zugeordneten Auto trennt.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Switch(checked = autoStopOnDisconnect, onCheckedChange = onSetAutoStopOnDisconnect)
             }
         }
 
